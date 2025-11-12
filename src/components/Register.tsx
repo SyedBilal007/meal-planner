@@ -22,7 +22,14 @@ export default function Register() {
       await register(email, password, name || undefined);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to register');
+      console.error('Registration error:', err);
+      if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        setError('Cannot connect to server. Please check if the backend is running and VITE_API_URL is configured correctly.');
+      } else if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError('Failed to register. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }

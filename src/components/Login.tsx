@@ -21,7 +21,14 @@ export default function Login() {
       await login(email, password);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to login');
+      console.error('Login error:', err);
+      if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        setError('Cannot connect to server. Please check if the backend is running and VITE_API_URL is configured correctly.');
+      } else if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError('Failed to login. Please check your connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
