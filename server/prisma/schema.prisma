@@ -1,0 +1,168 @@
+// Prisma schema for MealSync
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String?
+  passwordHash      String
+  dietaryPreferences String? // JSON string for preferences/allergies
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  households        HouseholdMember[]
+  assignedMeals    Meal[]            @relation("AssignedUser")
+  purchasedItems   GroceryListItem[] @relation("PurchasedBy")
+  recipes          Recipe[]
+}
+
+model Household {
+  id          String   @id @default(cuid())
+  name        String
+  inviteCode  String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  members     HouseholdMember[]
+  meals       Meal[]
+  groceryLists GroceryList[]
+  sharedLinks MealPlanShare[]
+}
+
+model HouseholdMember {
+  id          String   @id @default(cuid())
+  userId      String
+  householdId String
+  role        String   @default("member") // "owner" | "member"
+  joinedAt    DateTime @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, householdId])
+  @@index([householdId])
+  @@index([userId])
+}
+
+model Meal {
+  id          String   @id @default(cuid())
+  name        String
+  mealType    String   // "breakfast" | "lunch" | "dinner" | "snack"
+  date        DateTime
+  time        String?  // Optional time string
+  assignedToId String?
+  householdId String
+  recipeId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  assignedTo  User?     @relation("AssignedUser", fields: [assignedToId], references: [id], onDelete: SetNull)
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  recipe      Recipe?    @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@index([householdId])
+  @@index([date])
+  @@index([assignedToId])
+}
+
+model Recipe {
+  id          String   @id @default(cuid())
+  name        String
+  instructions String? // Markdown or text
+  servings    Int?
+  cookingTime Int?     // in minutes
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  meals       Meal[]
+  ingredients RecipeIngredient[]
+}
+
+model Ingredient {
+  id       String   @id @default(cuid())
+  name     String
+  quantity String?  // e.g., "500g", "2 pieces"
+  unit     String?  // e.g., "g", "kg", "pieces", "cups"
+  createdAt DateTime @default(now())
+
+  // Relations
+  recipeIngredients RecipeIngredient[]
+  groceryItems      GroceryListItem[]
+}
+
+model RecipeIngredient {
+  id           String @id @default(cuid())
+  recipeId     String
+  ingredientId String
+  quantity     String? // Override quantity for this recipe
+  unit         String? // Override unit for this recipe
+
+  recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, ingredientId])
+  @@index([recipeId])
+}
+
+model GroceryList {
+  id          String   @id @default(cuid())
+  householdId String
+  dateRangeStart DateTime
+  dateRangeEnd   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  items       GroceryListItem[]
+
+  @@index([householdId])
+}
+
+model GroceryListItem {
+  id            String   @id @default(cuid())
+  groceryListId String
+  ingredientId  String
+  quantity      String
+  unit          String?
+  isPurchased   Boolean  @default(false)
+  purchasedById String?
+  purchasedAt   DateTime?
+
+  // Relations
+  groceryList   GroceryList @relation(fields: [groceryListId], references: [id], onDelete: Cascade)
+  ingredient    Ingredient  @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  purchasedBy   User?       @relation("PurchasedBy", fields: [purchasedById], references: [id], onDelete: SetNull)
+
+  @@index([groceryListId])
+  @@index([isPurchased])
+}
+
+model MealPlanShare {
+  id          String   @id @default(cuid())
+  householdId String
+  shareToken  String   @unique
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([shareToken])
+  @@index([householdId])
+}
+
