@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { householdAPI } from '../utils/api';
-import { connectSocket, joinHousehold, leaveHousehold } from '../utils/socket';
+import { joinHousehold, leaveHousehold } from '../utils/socket';
 import { useAuth } from './AuthContext';
 
 interface Household {
