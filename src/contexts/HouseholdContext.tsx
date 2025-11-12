@@ -40,10 +40,16 @@ export const HouseholdProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // For testing: Skip API calls and socket connection
+    setLoading(false);
+    
+    // Original code (commented out for testing)
+    /*
     if (token) {
       connectSocket(token);
       refreshHouseholds();
     }
+    */
   }, [token]);
 
   useEffect(() => {
@@ -57,6 +63,11 @@ export const HouseholdProvider = ({ children }: { children: ReactNode }) => {
   }, [currentHousehold]);
 
   const refreshHouseholds = async () => {
+    // For testing: Skip API call
+    setLoading(false);
+    
+    // Original code (commented out for testing)
+    /*
     try {
       const res = await householdAPI.getAll();
       setHouseholds(res.data);
@@ -70,17 +81,49 @@ export const HouseholdProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
+    */
   };
 
   const createHousehold = async (name: string): Promise<Household> => {
+    // For testing: Create mock household
+    const mockHousehold: Household = {
+      id: `household-${Date.now()}`,
+      name,
+      inviteCode: Math.random().toString(36).substring(7),
+      members: [],
+    };
+    setHouseholds((prev) => [...prev, mockHousehold]);
+    setCurrentHousehold(mockHousehold);
+    return mockHousehold;
+    
+    // Original code (commented out for testing)
+    /*
     const res = await householdAPI.create({ name });
     const newHousehold = res.data;
     setHouseholds((prev) => [...prev, newHousehold]);
     setCurrentHousehold(newHousehold);
     return newHousehold;
+    */
   };
 
   const joinHouseholdByCode = async (inviteCode: string): Promise<Household> => {
+    // For testing: Create mock household for join
+    const mockHousehold: Household = {
+      id: `household-${Date.now()}`,
+      name: 'Joined Household',
+      inviteCode,
+      members: [],
+    };
+    setHouseholds((prev) => {
+      const exists = prev.find((h) => h.id === mockHousehold.id);
+      if (exists) return prev;
+      return [...prev, mockHousehold];
+    });
+    setCurrentHousehold(mockHousehold);
+    return mockHousehold;
+    
+    // Original code (commented out for testing)
+    /*
     const res = await householdAPI.join({ inviteCode });
     const household = res.data;
     setHouseholds((prev) => {
@@ -90,15 +133,26 @@ export const HouseholdProvider = ({ children }: { children: ReactNode }) => {
     });
     setCurrentHousehold(household);
     return household;
+    */
   };
 
   const leaveHouseholdById = async (id: string): Promise<void> => {
+    // For testing: Just remove from local state
+    setHouseholds((prev) => prev.filter((h) => h.id !== id));
+    if (currentHousehold?.id === id) {
+      const remaining = households.filter((h) => h.id !== id);
+      setCurrentHousehold(remaining.length > 0 ? remaining[0] : null);
+    }
+    
+    // Original code (commented out for testing)
+    /*
     await householdAPI.leave(id);
     setHouseholds((prev) => prev.filter((h) => h.id !== id));
     if (currentHousehold?.id === id) {
       const remaining = households.filter((h) => h.id !== id);
       setCurrentHousehold(remaining.length > 0 ? remaining[0] : null);
     }
+    */
   };
 
   return (

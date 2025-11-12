@@ -26,7 +26,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored auth
+    // For testing: Provide mock user without authentication
+    const mockUser: User = {
+      id: 'test-user-123',
+      email: 'test@example.com',
+      name: 'Test User',
+    };
+    setUser(mockUser);
+    setToken('mock-token-for-testing');
+    setLoading(false);
+    
+    // Original auth check (commented out for testing)
+    /*
     const storedToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
 
@@ -50,6 +61,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } else {
       setLoading(false);
     }
+    */
   }, []);
 
   const login = async (email: string, password: string) => {

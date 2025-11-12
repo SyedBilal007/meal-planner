@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, LogOut } from 'lucide-react';
+import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
 import { useHousehold } from '../contexts/HouseholdContext';
-import { useAuth } from '../contexts/AuthContext';
 import { mealAPI } from '../utils/api';
 import { getSocket } from '../utils/socket';
 import type { WeekPlan } from '../utils/groceryList';
@@ -24,7 +23,6 @@ const dayNames = {
 
 export default function MealPlanner() {
   const { currentHousehold } = useHousehold();
-  const { logout } = useAuth();
   const [selectedDay, setSelectedDay] = useState<keyof WeekPlan>('Mon');
   const [weekPlan, setWeekPlan] = useState<WeekPlan>({
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
@@ -42,6 +40,14 @@ export default function MealPlanner() {
   const fetchMeals = useCallback(async () => {
     if (!currentHousehold) return;
 
+    // For testing: Skip API call, just set empty plan
+    setLoading(false);
+    setWeekPlan({
+      Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+    });
+    
+    // Original code (commented out for testing)
+    /*
     setLoading(true);
     try {
       const { start, end } = getWeekDateRange(weekStart);
@@ -59,6 +65,7 @@ export default function MealPlanner() {
     } finally {
       setLoading(false);
     }
+    */
   }, [currentHousehold, weekStart]);
 
   useEffect(() => {
@@ -67,6 +74,9 @@ export default function MealPlanner() {
 
   // Set up Socket.IO listeners for real-time updates
   useEffect(() => {
+    // For testing: Skip Socket.IO setup
+    // Original code (commented out for testing)
+    /*
     if (!currentHousehold) return;
 
     const socket = getSocket();
@@ -104,11 +114,30 @@ export default function MealPlanner() {
       socket.off('meal-updated', handleMealUpdated);
       socket.off('meal-deleted', handleMealDeleted);
     };
+    */
   }, [currentHousehold, fetchMeals]);
 
   const addMeal = async () => {
     if (!newMealTitle.trim() || !currentHousehold) return;
 
+    // For testing: Add meal to local state
+    const newMeal = {
+      id: Date.now().toString(),
+      title: newMealTitle.trim(),
+      ingredients: newMealIngredients.trim(),
+    };
+
+    setWeekPlan(prev => ({
+      ...prev,
+      [selectedDay]: [...prev[selectedDay], newMeal],
+    }));
+
+    setNewMealTitle('');
+    setNewMealIngredients('');
+    showToast('Meal added successfully!');
+    
+    // Original code (commented out for testing)
+    /*
     try {
       const dayDate = new Date(weekStart);
       const dayIndex = days.indexOf(selectedDay);
@@ -128,11 +157,21 @@ export default function MealPlanner() {
     } catch (error: any) {
       showToast(error.response?.data?.error || 'Failed to add meal', 'error');
     }
+    */
   };
 
   const deleteMeal = async (mealId: string) => {
     if (!confirm('Are you sure you want to delete this meal?')) return;
 
+    // For testing: Remove from local state
+    setWeekPlan(prev => ({
+      ...prev,
+      [selectedDay]: prev[selectedDay].filter(meal => meal.id !== mealId),
+    }));
+    showToast('Meal deleted successfully!');
+    
+    // Original code (commented out for testing)
+    /*
     try {
       await mealAPI.delete(mealId);
       await fetchMeals();
@@ -140,6 +179,7 @@ export default function MealPlanner() {
     } catch (error: any) {
       showToast(error.response?.data?.error || 'Failed to delete meal', 'error');
     }
+    */
   };
 
   const getMealCount = (day: keyof WeekPlan) => weekPlan[day].length;
@@ -230,19 +270,10 @@ export default function MealPlanner() {
             <h1 className="text-4xl font-bold text-gray-900">MealSync</h1>
           </div>
           <p className="text-lg text-gray-600 mb-4">
-            Collaborative meal planning for {currentHousehold.name}
+            Collaborative meal planning{currentHousehold ? ` for ${currentHousehold.name}` : ''}
           </p>
           <div className="flex justify-center items-center gap-4 flex-wrap">
             <AIMealGenerator onMealAdded={fetchMeals} />
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={logout}
-              className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Logout
-            </motion.button>
           </div>
         </motion.div>
 
