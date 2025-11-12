@@ -20,8 +20,6 @@ export interface BackendMeal {
   };
 }
 
-const days: ('Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun')[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
 export const getWeekStart = (date: Date = new Date()): Date => {
   const d = new Date(date);
   const day = d.getDay();

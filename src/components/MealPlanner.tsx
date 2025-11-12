@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Calendar, RotateCcw, Copy, Download, ShoppingCart, BookOpen, X, ChevronDown, ChevronRight, LogOut } from 'lucide-react';
+import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, LogOut } from 'lucide-react';
 import { useHousehold } from '../contexts/HouseholdContext';
 import { useAuth } from '../contexts/AuthContext';
-import { mealAPI, groceryAPI } from '../utils/api';
+import { mealAPI } from '../utils/api';
 import { getSocket } from '../utils/socket';
 import type { WeekPlan } from '../utils/groceryList';
 import { generateGroceryList, generateCategorizedGroceryList, downloadText } from '../utils/groceryList';
-import { convertMealsToWeekPlan, getWeekStart, getWeekDateRange, getDayOfWeek, type BackendMeal } from '../utils/mealHelpers';
+import { convertMealsToWeekPlan, getWeekStart, getWeekDateRange, type BackendMeal } from '../utils/mealHelpers';
 import HouseholdManager from './HouseholdManager';
 import AIMealGenerator from './AIMealGenerator';
 
@@ -24,12 +24,12 @@ const dayNames = {
 
 export default function MealPlanner() {
   const { currentHousehold } = useHousehold();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [selectedDay, setSelectedDay] = useState<keyof WeekPlan>('Mon');
   const [weekPlan, setWeekPlan] = useState<WeekPlan>({
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
   });
-  const [backendMeals, setBackendMeals] = useState<BackendMeal[]>([]);
+  const [, setBackendMeals] = useState<BackendMeal[]>([]);
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [newMealTitle, setNewMealTitle] = useState('');
   const [newMealIngredients, setNewMealIngredients] = useState('');

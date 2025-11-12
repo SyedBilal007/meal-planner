@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, LogOut, Copy, Check } from 'lucide-react';
 import { useHousehold } from '../contexts/HouseholdContext';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function HouseholdManager() {
   const {
@@ -13,7 +12,6 @@ export default function HouseholdManager() {
     joinHousehold,
     leaveHousehold,
   } = useHousehold();
-  const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [householdName, setHouseholdName] = useState('');
