@@ -4,7 +4,7 @@ import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, Chev
 import { useHousehold } from '../contexts/HouseholdContext';
 import type { WeekPlan } from '../utils/groceryList';
 import { generateGroceryList, generateCategorizedGroceryList, downloadText } from '../utils/groceryList';
-import { getWeekStart, type BackendMeal } from '../utils/mealHelpers';
+import { getWeekStart } from '../utils/mealHelpers';
 import HouseholdManager from './HouseholdManager';
 import AIMealGenerator from './AIMealGenerator';
 
