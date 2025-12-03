@@ -129,7 +129,7 @@ export default function Pantry() {
     setError('');
 
     try {
-      const payload: { name?: string; quantity?: string; unit?: string } = {};
+      const payload: { name?: string; quantity?: string | null; unit?: string | null } = {};
 
       if (editFormData.name.trim()) {
         payload.name = editFormData.name.trim();
