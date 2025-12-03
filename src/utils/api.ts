@@ -10,48 +10,6 @@ export const api = axios.create({
   },
 });
 
-// Add auth token to requests
-api.interceptors.request.use((config) => {
-  // Try new key first, then fallback to old key for backward compatibility
-  const token = localStorage.getItem('mealsync_token') || localStorage.getItem('token');
-  if (token) {
-    const tokenType = localStorage.getItem('token_type') || 'Bearer';
-    config.headers.Authorization = `${tokenType} ${token}`;
-  }
-  return config;
-});
-
-// Handle auth errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      // Clear all auth-related storage
-      localStorage.removeItem('mealsync_token');
-      localStorage.removeItem('mealsync_user');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('token_type');
-      
-      // Only redirect if not already on login/register page
-      const currentPath = window.location.pathname;
-      if (currentPath !== '/login' && currentPath !== '/register') {
-        window.location.href = '/login';
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
-// Auth API - FastAPI endpoints
-export const authAPI = {
-  register: (data: { email: string; password: string; full_name?: string }) =>
-    api.post('/api/v1/auth/register', data),
-  login: (data: { email: string; password: string }) =>
-    api.post('/api/v1/auth/login', data),
-  getMe: () => api.get('/api/v1/auth/me'),
-};
-
 // Household API
 export const householdAPI = {
   create: (data: { name: string }) => api.post('/households', data),
@@ -140,7 +98,3 @@ export const pantryAPI = {
     api.patch(`/api/v1/pantry/${id}`, data),
   delete: (id: string) => api.delete(`/api/v1/pantry/${id}`),
 };
-
-
-
-

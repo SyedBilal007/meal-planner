@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { joinHousehold, leaveHousehold } from '../utils/socket';
-import { useAuth } from './AuthContext';
 
 interface Household {
   id: string;
@@ -33,23 +32,15 @@ interface HouseholdContextType {
 const HouseholdContext = createContext<HouseholdContextType | undefined>(undefined);
 
 export const HouseholdProvider = ({ children }: { children: ReactNode }) => {
-  const { token } = useAuth();
   const [households, setHouseholds] = useState<Household[]>([]);
   const [currentHousehold, setCurrentHousehold] = useState<Household | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // For testing: Skip API calls and socket connection
+    // Initialize without auth
     setLoading(false);
-    
-    // Original code (commented out for testing)
-    /*
-    if (token) {
-      connectSocket(token);
-      refreshHouseholds();
-    }
-    */
-  }, [token]);
+    refreshHouseholds();
+  }, []);
 
   useEffect(() => {
     // Join/leave household room for real-time updates
@@ -179,4 +170,3 @@ export const useHousehold = () => {
   }
   return context;
 };
-

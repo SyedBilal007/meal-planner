@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, Plus, Loader2 } from 'lucide-react';
-import { aiAPI } from '../utils/api';
-import { mealAPI } from '../utils/api';
-import { useHousehold } from '../contexts/HouseholdContext';
+import { mockAddMeal } from '../mocks/meals';
 
 interface MealSuggestion {
   name: string;
@@ -15,7 +13,6 @@ interface MealSuggestion {
 }
 
 export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => void }) {
-  const { currentHousehold } = useHousehold();
   const [showModal, setShowModal] = useState(false);
   const [ingredients, setIngredients] = useState<string[]>(['']);
   const [suggestions, setSuggestions] = useState<MealSuggestion[]>([]);
@@ -49,35 +46,33 @@ export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => v
     setError('');
     setSuggestions([]);
 
-    try {
-      const res = await aiAPI.generateMeals({ ingredients: validIngredients });
-      setSuggestions(res.data.suggestions || []);
-      if (res.data.suggestions.length === 0) {
-        setError('No meal suggestions found. Try different ingredients.');
-      }
-    } catch (err: any) {
-      if (err.response?.status === 503) {
-        setError('AI service is not configured. Please set OPENAI_API_KEY in the backend.');
-      } else {
-        setError(err.response?.data?.error || 'Failed to generate meal suggestions');
-      }
-    } finally {
+    // AI meal generation is disabled in mock mode
+    // In a real implementation, this would call the backend AI API
+    setTimeout(() => {
+      setError('AI meal generation is not available in mock mode. Please add meals manually.');
       setLoading(false);
-    }
+    }, 500);
   };
 
   const addMealToPlan = async (suggestion: MealSuggestion, date: string, mealType: string) => {
-    if (!currentHousehold) {
-      alert('Please select a household first');
-      return;
-    }
-
     try {
-      await mealAPI.create({
-        name: suggestion.name,
-        mealType: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
-        date: new Date(date).toISOString(),
-        householdId: currentHousehold.id,
+      // Convert date to yyyy-mm-dd format
+      const dateString = new Date(date).toISOString().split('T')[0];
+      
+      // Build notes from description and recipe if available
+      let notes = suggestion.description;
+      if (suggestion.recipe) {
+        notes += '\n\nIngredients:\n';
+        suggestion.recipe.ingredients.forEach(ing => {
+          notes += `- ${ing.quantity} ${ing.unit || ''} ${ing.name}\n`;
+        });
+        notes += `\nInstructions:\n${suggestion.recipe.instructions}`;
+      }
+
+      await mockAddMeal({
+        title: suggestion.name,
+        date: dateString,
+        notes: notes || undefined,
       });
       
       if (onMealAdded) {
@@ -85,7 +80,8 @@ export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => v
       }
       setShowModal(false);
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to add meal to plan');
+      console.error('Failed to add meal to plan:', err);
+      alert('Failed to add meal to plan');
     }
   };
 

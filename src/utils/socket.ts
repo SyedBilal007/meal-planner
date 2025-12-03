@@ -4,13 +4,12 @@ const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://
 
 let socket: Socket | null = null;
 
-export const connectSocket = (token: string): Socket => {
+export const connectSocket = (): Socket => {
   if (socket?.connected) {
     return socket;
   }
 
   socket = io(SOCKET_URL, {
-    auth: { token },
     transports: ['websocket', 'polling'],
   });
 
@@ -51,7 +50,3 @@ export const leaveHousehold = (householdId: string) => {
     socket.emit('leave-household', householdId);
   }
 };
-
-
-
-

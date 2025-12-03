@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
-import { useHousehold } from '../contexts/HouseholdContext';
 import type { WeekPlan } from '../utils/groceryList';
 import { generateGroceryList, generateCategorizedGroceryList, downloadText } from '../utils/groceryList';
 import { getWeekStart } from '../utils/mealHelpers';
-import HouseholdManager from './HouseholdManager';
+import { mockGetMeals, mockAddMeal, mockDeleteMeal } from '../mocks/meals';
+import { getDayOfWeek } from '../utils/mealHelpers';
 import AIMealGenerator from './AIMealGenerator';
 
 const days: (keyof WeekPlan)[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -20,12 +20,10 @@ const dayNames = {
 };
 
 export default function MealPlanner() {
-  const { currentHousehold } = useHousehold();
   const [selectedDay, setSelectedDay] = useState<keyof WeekPlan>('Mon');
   const [weekPlan, setWeekPlan] = useState<WeekPlan>({
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
   });
-  // const [, setBackendMeals] = useState<BackendMeal[]>([]); // Unused in test mode
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [newMealTitle, setNewMealTitle] = useState('');
   const [newMealIngredients, setNewMealIngredients] = useState('');
@@ -34,28 +32,32 @@ export default function MealPlanner() {
   const [copyByCategory, setCopyByCategory] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Fetch meals from backend
+  // Fetch meals from mock data
   const fetchMeals = useCallback(async () => {
-    if (!currentHousehold) return;
-
-    // For testing: Skip API call, just set empty plan
-    setLoading(false);
-    setWeekPlan({
-      Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
-    });
-    
-    // Original code (commented out for testing)
-    /*
     setLoading(true);
     try {
-      const { start, end } = getWeekDateRange(weekStart);
-      const res = await mealAPI.getAll({
-        householdId: currentHousehold.id,
-        startDate: start,
-        endDate: end,
+      const allMeals = await mockGetMeals();
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      
+      // Convert mock meals to WeekPlan format
+      const plan: WeekPlan = {
+        Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+      };
+      
+      allMeals.forEach((meal) => {
+        const mealDate = new Date(meal.date);
+        // Check if meal is in current week
+        if (mealDate >= weekStart && mealDate <= weekEnd) {
+          const dayOfWeek = getDayOfWeek(mealDate);
+          plan[dayOfWeek].push({
+            id: String(meal.id),
+            title: meal.title,
+            ingredients: meal.notes || '',
+          });
+        }
       });
-      setBackendMeals(res.data);
-      const plan = convertMealsToWeekPlan(res.data, weekStart);
+      
       setWeekPlan(plan);
     } catch (error) {
       console.error('Failed to fetch meals:', error);
@@ -63,121 +65,54 @@ export default function MealPlanner() {
     } finally {
       setLoading(false);
     }
-    */
-  }, [currentHousehold, weekStart]);
+  }, [weekStart]);
 
   useEffect(() => {
     fetchMeals();
   }, [fetchMeals]);
 
-  // Set up Socket.IO listeners for real-time updates
-  useEffect(() => {
-    // For testing: Skip Socket.IO setup
-    // Original code (commented out for testing)
-    /*
-    if (!currentHousehold) return;
-
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handleMealCreated = (meal: BackendMeal) => {
-      if (meal.householdId === currentHousehold.id) {
-        setBackendMeals((prev) => {
-          const exists = prev.find((m) => m.id === meal.id);
-          if (exists) return prev;
-          return [...prev, meal];
-        });
-        fetchMeals();
-      }
-    };
-
-    const handleMealUpdated = (meal: BackendMeal) => {
-      if (meal.householdId === currentHousehold.id) {
-        setBackendMeals((prev) => prev.map((m) => (m.id === meal.id ? meal : m)));
-        fetchMeals();
-      }
-    };
-
-    const handleMealDeleted = (data: { id: string }) => {
-      setBackendMeals((prev) => prev.filter((m) => m.id !== data.id));
-      fetchMeals();
-    };
-
-    socket.on('meal-created', handleMealCreated);
-    socket.on('meal-updated', handleMealUpdated);
-    socket.on('meal-deleted', handleMealDeleted);
-
-    return () => {
-      socket.off('meal-created', handleMealCreated);
-      socket.off('meal-updated', handleMealUpdated);
-      socket.off('meal-deleted', handleMealDeleted);
-    };
-    */
-  }, [currentHousehold, fetchMeals]);
-
   const addMeal = async () => {
-    if (!newMealTitle.trim() || !currentHousehold) return;
+    if (!newMealTitle.trim()) return;
 
-    // For testing: Add meal to local state
-    const newMeal = {
-      id: Date.now().toString(),
-      title: newMealTitle.trim(),
-      ingredients: newMealIngredients.trim(),
-    };
-
-    setWeekPlan(prev => ({
-      ...prev,
-      [selectedDay]: [...prev[selectedDay], newMeal],
-    }));
-
-    setNewMealTitle('');
-    setNewMealIngredients('');
-    showToast('Meal added successfully!');
-    
-    // Original code (commented out for testing)
-    /*
     try {
-      const dayDate = new Date(weekStart);
+      // Calculate date for selected day
       const dayIndex = days.indexOf(selectedDay);
-      dayDate.setDate(dayDate.getDate() + dayIndex);
-
-      await mealAPI.create({
-        name: newMealTitle.trim(),
-        mealType: 'dinner', // Default, can be made configurable
-        date: dayDate.toISOString(),
-        householdId: currentHousehold.id,
+      const mealDate = new Date(weekStart);
+      mealDate.setDate(mealDate.getDate() + dayIndex);
+      const dateString = mealDate.toISOString().split('T')[0]; // yyyy-mm-dd format
+      
+      await mockAddMeal({
+        title: newMealTitle.trim(),
+        date: dateString,
+        notes: newMealIngredients.trim() || undefined,
       });
+      
+      // Refresh meals to get updated week plan
+      await fetchMeals();
 
       setNewMealTitle('');
       setNewMealIngredients('');
-      await fetchMeals();
       showToast('Meal added successfully!');
     } catch (error: any) {
-      showToast(error.response?.data?.error || 'Failed to add meal', 'error');
+      console.error('Failed to add meal:', error);
+      showToast('Failed to add meal', 'error');
     }
-    */
   };
 
   const deleteMeal = async (mealId: string) => {
     if (!confirm('Are you sure you want to delete this meal?')) return;
 
-    // For testing: Remove from local state
-    setWeekPlan(prev => ({
-      ...prev,
-      [selectedDay]: prev[selectedDay].filter(meal => meal.id !== mealId),
-    }));
-    showToast('Meal deleted successfully!');
-    
-    // Original code (commented out for testing)
-    /*
     try {
-      await mealAPI.delete(mealId);
-      await fetchMeals();
+      const mealIdNum = parseInt(mealId, 10);
+      if (!isNaN(mealIdNum)) {
+        await mockDeleteMeal(mealIdNum);
+        await fetchMeals(); // Refresh to update week plan
+      }
       showToast('Meal deleted successfully!');
     } catch (error: any) {
-      showToast(error.response?.data?.error || 'Failed to delete meal', 'error');
+      console.error('Failed to delete meal:', error);
+      showToast('Failed to delete meal', 'error');
     }
-    */
   };
 
   const getMealCount = (day: keyof WeekPlan) => weekPlan[day].length;
@@ -243,16 +178,6 @@ export default function MealPlanner() {
     setWeekStart(newWeekStart);
   };
 
-  if (!currentHousehold) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-        <div className="container mx-auto max-w-4xl">
-          <HouseholdManager />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="container mx-auto max-w-7xl">
@@ -268,14 +193,12 @@ export default function MealPlanner() {
             <h1 className="text-4xl font-bold text-gray-900">MealSync</h1>
           </div>
           <p className="text-lg text-gray-600 mb-4">
-            Collaborative meal planning{currentHousehold ? ` for ${currentHousehold.name}` : ''}
+            Collaborative meal planning
           </p>
           <div className="flex justify-center items-center gap-4 flex-wrap">
             <AIMealGenerator onMealAdded={fetchMeals} />
           </div>
         </motion.div>
-
-        <HouseholdManager />
 
         {/* Week Navigation */}
         <div className="flex justify-center items-center gap-4 mb-6">
