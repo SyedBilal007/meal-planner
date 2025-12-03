@@ -9,7 +9,6 @@ import { mockGetMeals, mockAddMeal, mockUpdateMeal, mockDeleteMeal } from '../mo
 import { getDayOfWeek } from '../utils/mealHelpers';
 import { mealAPI } from '../utils/api';
 import { useHousehold } from '../contexts/HouseholdContext';
-import AIMealGenerator from './AIMealGenerator';
 
 const days: (keyof WeekPlan)[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const dayNames = {
@@ -326,9 +325,6 @@ export default function MealPlanner() {
           <p className="text-lg text-gray-600 mb-4">
             Collaborative meal planning
           </p>
-          <div className="flex justify-center items-center gap-4 flex-wrap">
-            <AIMealGenerator onMealAdded={fetchMeals} />
-          </div>
         </motion.div>
 
         {/* Week Navigation */}
