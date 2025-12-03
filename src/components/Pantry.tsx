@@ -137,8 +137,14 @@ export default function Pantry() {
       const updatedItem = await mockUpdatePantryItem(id, payload);
 
       if (updatedItem) {
+        // Ensure no null values - convert to undefined
+        const cleanItem: PantryItem = {
+          ...updatedItem,
+          quantity: updatedItem.quantity ?? undefined,
+          unit: updatedItem.unit ?? undefined,
+        };
         setItems((prev) =>
-          prev.map((item) => (item.id === id ? updatedItem : item))
+          prev.map((item) => (item.id === id ? cleanItem : item))
         );
         setEditingId(null);
         setEditFormData({ name: '', quantity: '', unit: '' });

@@ -11,7 +11,7 @@ let grocery: GroceryItem[] = [
   { id: 2, name: 'Tomato', quantity: '6', unit: 'pcs', bought: false },
 ];
 
-let nextGroceryId = 3;
+// let nextGroceryId = 3; // Reserved for future use if adding items
 
 // Simulate network delay
 const delay = (ms: number = 200) => new Promise((resolve) => setTimeout(resolve, ms));

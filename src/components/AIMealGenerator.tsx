@@ -54,7 +54,7 @@ export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => v
     }, 500);
   };
 
-  const addMealToPlan = async (suggestion: MealSuggestion, date: string, mealType: string) => {
+  const addMealToPlan = async (suggestion: MealSuggestion, date: string, _mealType: string) => {
     try {
       // Convert date to yyyy-mm-dd format
       const dateString = new Date(date).toISOString().split('T')[0];

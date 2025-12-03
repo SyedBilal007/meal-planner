@@ -46,12 +46,30 @@ export async function mockUpdatePantryItem(
   await delay(200);
   const index = pantry.findIndex((p) => p.id === id);
   if (index === -1) return null;
+  
+  // Build clean updates object, converting null to undefined for optional fields
+  const cleanUpdates: Partial<Omit<PantryItem, 'id' | 'created_at' | 'updated_at'>> = {};
+  if (updates.name !== undefined) cleanUpdates.name = updates.name;
+  if (updates.quantity !== undefined) {
+    cleanUpdates.quantity = updates.quantity ?? undefined;
+  }
+  if (updates.unit !== undefined) {
+    cleanUpdates.unit = updates.unit ?? undefined;
+  }
+  
   pantry[index] = {
     ...pantry[index],
-    ...updates,
+    ...cleanUpdates,
     updated_at: new Date().toISOString(),
   };
-  return pantry[index];
+  
+  // Ensure the returned item never has null for optional fields
+  const result = pantry[index];
+  return {
+    ...result,
+    quantity: result.quantity ?? undefined,
+    unit: result.unit ?? undefined,
+  };
 }
 
 export async function mockDeletePantryItem(id: string): Promise<void> {
