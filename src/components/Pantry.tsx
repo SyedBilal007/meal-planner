@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Edit2, X, Save, Package, AlertCircle, Loader2 } from 'lucide-react';
+import { USE_MOCK_DATA } from '../config/dataSource';
 import {
   mockGetPantry,
   mockAddPantryItem,
@@ -8,6 +9,7 @@ import {
   mockDeletePantryItem,
   type PantryItem,
 } from '../mocks/pantry';
+import { pantryAPI } from '../utils/api';
 
 interface PantryFormData {
   name: string;
@@ -44,11 +46,17 @@ export default function Pantry() {
     setLoading(true);
     setError('');
     try {
-      const items = await mockGetPantry();
+      const items = USE_MOCK_DATA
+        ? await mockGetPantry()
+        : (await pantryAPI.getAll()).data;
       setItems(items);
     } catch (err: any) {
       console.error('Failed to fetch pantry items:', err);
-      setError('Could not load pantry. Please try again.');
+      setError(
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        'Could not load pantry. Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -77,7 +85,9 @@ export default function Pantry() {
         payload.unit = formData.unit.trim();
       }
 
-      const newItem = await mockAddPantryItem(payload);
+      const newItem = USE_MOCK_DATA
+        ? await mockAddPantryItem(payload)
+        : (await pantryAPI.create(payload)).data;
       setItems((prev) => [...prev, newItem]);
       setFormData({ name: '', quantity: '', unit: '' });
       setShowAddForm(false);
@@ -134,7 +144,9 @@ export default function Pantry() {
       }
       // If empty, don't include in payload (will be undefined, not null)
 
-      const updatedItem = await mockUpdatePantryItem(id, payload);
+      const updatedItem = USE_MOCK_DATA
+        ? await mockUpdatePantryItem(id, payload)
+        : (await pantryAPI.update(id, payload)).data;
 
       if (updatedItem) {
         // Ensure no null values - convert to undefined
@@ -168,11 +180,19 @@ export default function Pantry() {
     setError('');
 
     try {
-      await mockDeletePantryItem(id);
+      if (USE_MOCK_DATA) {
+        await mockDeletePantryItem(id);
+      } else {
+        await pantryAPI.delete(id);
+      }
       setItems((prev) => prev.filter((item) => item.id !== id));
     } catch (err: any) {
       console.error('Failed to delete ingredient:', err);
-      setError('Failed to delete ingredient. Please try again.');
+      setError(
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        'Failed to delete ingredient. Please try again.'
+      );
     } finally {
       setActionLoading(null);
     }

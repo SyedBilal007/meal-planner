@@ -2,6 +2,8 @@ export type Meal = {
   id: string;
   title: string;
   ingredients: string;
+  timeSlot?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  assignedTo?: string;
 };
 
 export type WeekPlan = Record<'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun', Meal[]>;

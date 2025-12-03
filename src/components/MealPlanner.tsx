@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, Save, Edit2, Clock, User } from 'lucide-react';
+import { USE_MOCK_DATA } from '../config/dataSource';
 import type { WeekPlan } from '../utils/groceryList';
 import { generateGroceryList, generateCategorizedGroceryList, downloadText } from '../utils/groceryList';
-import { getWeekStart } from '../utils/mealHelpers';
-import { mockGetMeals, mockAddMeal, mockDeleteMeal } from '../mocks/meals';
+import { getWeekStart, getWeekDateRange, convertMealsToWeekPlan } from '../utils/mealHelpers';
+import { mockGetMeals, mockAddMeal, mockUpdateMeal, mockDeleteMeal } from '../mocks/meals';
 import { getDayOfWeek } from '../utils/mealHelpers';
+import { mealAPI } from '../utils/api';
+import { useHousehold } from '../contexts/HouseholdContext';
 import AIMealGenerator from './AIMealGenerator';
 
 const days: (keyof WeekPlan)[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -20,6 +23,7 @@ const dayNames = {
 };
 
 export default function MealPlanner() {
+  const { currentHousehold } = useHousehold();
   const [selectedDay, setSelectedDay] = useState<keyof WeekPlan>('Mon');
   const [weekPlan, setWeekPlan] = useState<WeekPlan>({
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
@@ -27,45 +31,76 @@ export default function MealPlanner() {
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [newMealTitle, setNewMealTitle] = useState('');
   const [newMealIngredients, setNewMealIngredients] = useState('');
+  const [newMealTimeSlot, setNewMealTimeSlot] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('dinner');
+  const [newMealAssignedTo, setNewMealAssignedTo] = useState('');
+  const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [editMealTitle, setEditMealTitle] = useState('');
+  const [editMealIngredients, setEditMealIngredients] = useState('');
+  const [editMealTimeSlot, setEditMealTimeSlot] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('dinner');
+  const [editMealAssignedTo, setEditMealAssignedTo] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [copyByCategory, setCopyByCategory] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Fetch meals from mock data
+  // Fetch meals from mock data or real API
   const fetchMeals = useCallback(async () => {
+    if (!USE_MOCK_DATA && !currentHousehold) {
+      setWeekPlan({ Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: [] });
+      return;
+    }
+
     setLoading(true);
     try {
-      const allMeals = await mockGetMeals();
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      
-      // Convert mock meals to WeekPlan format
-      const plan: WeekPlan = {
-        Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
-      };
-      
-      allMeals.forEach((meal) => {
-        const mealDate = new Date(meal.date);
-        // Check if meal is in current week
-        if (mealDate >= weekStart && mealDate <= weekEnd) {
-          const dayOfWeek = getDayOfWeek(mealDate);
-          plan[dayOfWeek].push({
-            id: String(meal.id),
-            title: meal.title,
-            ingredients: meal.notes || '',
-          });
-        }
-      });
-      
-      setWeekPlan(plan);
-    } catch (error) {
+      if (USE_MOCK_DATA) {
+        const allMeals = await mockGetMeals();
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        
+        // Convert mock meals to WeekPlan format
+        const plan: WeekPlan = {
+          Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+        };
+        
+        allMeals.forEach((meal) => {
+          const mealDate = new Date(meal.date);
+          // Check if meal is in current week
+          if (mealDate >= weekStart && mealDate <= weekEnd) {
+            const dayOfWeek = getDayOfWeek(mealDate);
+            plan[dayOfWeek].push({
+              id: String(meal.id),
+              title: meal.title,
+              ingredients: meal.notes || '',
+              timeSlot: meal.timeSlot,
+              assignedTo: meal.assignedTo,
+            });
+          }
+        });
+        
+        setWeekPlan(plan);
+      } else {
+        // Real API path
+        const { start, end } = getWeekDateRange(weekStart);
+        const response = await mealAPI.getAll({
+          householdId: currentHousehold!.id,
+          startDate: start,
+          endDate: end,
+        });
+        const plan = convertMealsToWeekPlan(response.data, weekStart);
+        setWeekPlan(plan);
+      }
+    } catch (error: any) {
       console.error('Failed to fetch meals:', error);
-      showToast('Failed to load meals', 'error');
+      showToast(
+        error.response?.data?.error || 
+        error.response?.data?.message || 
+        'Failed to load meals', 
+        'error'
+      );
     } finally {
       setLoading(false);
     }
-  }, [weekStart]);
+  }, [weekStart, currentHousehold]);
 
   useEffect(() => {
     fetchMeals();
@@ -73,29 +108,112 @@ export default function MealPlanner() {
 
   const addMeal = async () => {
     if (!newMealTitle.trim()) return;
+    if (!USE_MOCK_DATA && !currentHousehold) {
+      showToast('Please select a household first', 'error');
+      return;
+    }
 
     try {
       // Calculate date for selected day
       const dayIndex = days.indexOf(selectedDay);
       const mealDate = new Date(weekStart);
       mealDate.setDate(mealDate.getDate() + dayIndex);
-      const dateString = mealDate.toISOString().split('T')[0]; // yyyy-mm-dd format
       
-      await mockAddMeal({
-        title: newMealTitle.trim(),
-        date: dateString,
-        notes: newMealIngredients.trim() || undefined,
-      });
+      if (USE_MOCK_DATA) {
+        const dateString = mealDate.toISOString().split('T')[0]; // yyyy-mm-dd format
+        await mockAddMeal({
+          title: newMealTitle.trim(),
+          date: dateString,
+          timeSlot: newMealTimeSlot,
+          assignedTo: newMealAssignedTo.trim() || undefined,
+          notes: newMealIngredients.trim() || undefined,
+        });
+      } else {
+        // Real API path
+        await mealAPI.create({
+          name: newMealTitle.trim(),
+          mealType: 'dinner',
+          date: mealDate.toISOString(),
+          householdId: currentHousehold!.id,
+        });
+      }
       
       // Refresh meals to get updated week plan
       await fetchMeals();
 
       setNewMealTitle('');
       setNewMealIngredients('');
+      setNewMealTimeSlot('dinner');
+      setNewMealAssignedTo('');
       showToast('Meal added successfully!');
     } catch (error: any) {
       console.error('Failed to add meal:', error);
-      showToast('Failed to add meal', 'error');
+      showToast(
+        error.response?.data?.error || 
+        error.response?.data?.message || 
+        'Failed to add meal', 
+        'error'
+      );
+    }
+  };
+
+  const handleEditClick = (meal: WeekPlan['Mon'][0]) => {
+    setEditingMealId(meal.id);
+    setEditMealTitle(meal.title);
+    setEditMealIngredients(meal.ingredients || '');
+    setEditMealTimeSlot(meal.timeSlot || 'dinner');
+    setEditMealAssignedTo(meal.assignedTo || '');
+  };
+
+  const handleEditCancel = () => {
+    setEditingMealId(null);
+    setEditMealTitle('');
+    setEditMealIngredients('');
+    setEditMealTimeSlot('dinner');
+    setEditMealAssignedTo('');
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editMealTitle.trim()) return;
+    if (!editingMealId) return;
+
+    try {
+      if (USE_MOCK_DATA) {
+        const mealIdNum = parseInt(editingMealId, 10);
+        if (!isNaN(mealIdNum)) {
+          // Get all meals to find the existing meal and preserve its date
+          const allMeals = await mockGetMeals();
+          const existingMeal = allMeals.find(m => m.id === mealIdNum);
+          if (existingMeal) {
+            await mockUpdateMeal(mealIdNum, {
+              title: editMealTitle.trim(),
+              timeSlot: editMealTimeSlot,
+              assignedTo: editMealAssignedTo.trim() || undefined,
+              notes: editMealIngredients.trim() || undefined,
+              // Preserve the date
+              date: existingMeal.date,
+            });
+          }
+        }
+      } else {
+        // Real API path
+        await mealAPI.update(editingMealId, {
+          name: editMealTitle.trim(),
+          mealType: editMealTimeSlot,
+        });
+      }
+      
+      await fetchMeals();
+      handleEditCancel();
+      showToast('Meal updated successfully!');
+    } catch (error: any) {
+      console.error('Failed to update meal:', error);
+      showToast(
+        error.response?.data?.error || 
+        error.response?.data?.message || 
+        'Failed to update meal', 
+        'error'
+      );
     }
   };
 
@@ -103,15 +221,28 @@ export default function MealPlanner() {
     if (!confirm('Are you sure you want to delete this meal?')) return;
 
     try {
-      const mealIdNum = parseInt(mealId, 10);
-      if (!isNaN(mealIdNum)) {
-        await mockDeleteMeal(mealIdNum);
-        await fetchMeals(); // Refresh to update week plan
+      if (USE_MOCK_DATA) {
+        const mealIdNum = parseInt(mealId, 10);
+        if (!isNaN(mealIdNum)) {
+          await mockDeleteMeal(mealIdNum);
+        }
+      } else {
+        // Real API path
+        await mealAPI.delete(mealId);
+      }
+      await fetchMeals(); // Refresh to update week plan
+      if (editingMealId === mealId) {
+        handleEditCancel();
       }
       showToast('Meal deleted successfully!');
     } catch (error: any) {
       console.error('Failed to delete meal:', error);
-      showToast('Failed to delete meal', 'error');
+      showToast(
+        error.response?.data?.error || 
+        error.response?.data?.message || 
+        'Failed to delete meal', 
+        'error'
+      );
     }
   };
 
@@ -277,101 +408,304 @@ export default function MealPlanner() {
               </h2>
 
               {/* Add Meal Form */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.5 }}
-                className="bg-gray-50 rounded-xl p-4 mb-6"
-              >
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Meal Title
-                    </label>
-                    <input
-                      type="text"
-                      value={newMealTitle}
-                      onChange={(e) => setNewMealTitle(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && addMeal()}
-                      placeholder="e.g., Chicken Stir Fry"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
-                      aria-label="Meal title"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Ingredients (one per line) - Optional
-                    </label>
-                    <textarea
-                      value={newMealIngredients}
-                      onChange={(e) => setNewMealIngredients(e.target.value)}
-                      placeholder="Chicken breast&#10;Bell peppers&#10;Broccoli&#10;Soy sauce"
-                      rows={4}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none resize-none"
-                      aria-label="Ingredients list"
-                    />
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={addMeal}
-                    disabled={!newMealTitle.trim() || loading}
-                    className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    {loading ? 'Adding...' : 'Add Meal'}
-                  </motion.button>
-                </div>
-              </motion.div>
-
-              {/* Meals List */}
-              <div className="space-y-4">
-                <AnimatePresence>
-                  {weekPlan[selectedDay].map((meal, index) => (
-                    <motion.div
-                      key={meal.id}
-                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                      transition={{ duration: 0.3, delay: index * 0.1 }}
-                      layout
-                      className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-4 border border-indigo-100"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          {meal.title}
-                        </h3>
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => deleteMeal(meal.id)}
-                          className="text-red-500 hover:text-red-700 focus:text-red-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 rounded p-1"
-                          aria-label={`Delete meal: ${meal.title}`}
+              {!editingMealId && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.5 }}
+                  className="bg-gray-50 rounded-xl p-4 mb-6"
+                >
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Meal</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Meal Title <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newMealTitle}
+                        onChange={(e) => setNewMealTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addMeal()}
+                        placeholder="e.g., Chicken Stir Fry"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                        aria-label="Meal title"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Time Slot
+                        </label>
+                        <select
+                          value={newMealTimeSlot}
+                          onChange={(e) => setNewMealTimeSlot(e.target.value as 'breakfast' | 'lunch' | 'dinner' | 'snack')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </motion.button>
+                          <option value="breakfast">Breakfast</option>
+                          <option value="lunch">Lunch</option>
+                          <option value="dinner">Dinner</option>
+                          <option value="snack">Snack</option>
+                        </select>
                       </div>
-                      {meal.ingredients && (
-                        <div className="space-y-1">
-                          {meal.ingredients.split('\n').filter(Boolean).map((ingredient, idx) => (
-                            <motion.div
-                              key={idx}
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ duration: 0.2, delay: 0.1 + idx * 0.05 }}
-                              className="flex items-center gap-2 text-sm text-gray-600"
-                            >
-                              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
-                              <span>{ingredient}</span>
-                            </motion.div>
-                          ))}
-                        </div>
-                      )}
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Assigned To (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={newMealAssignedTo}
+                          onChange={(e) => setNewMealAssignedTo(e.target.value)}
+                          placeholder="e.g., Bilal"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                          aria-label="Assigned to"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Ingredients (one per line) - Optional
+                      </label>
+                      <textarea
+                        value={newMealIngredients}
+                        onChange={(e) => setNewMealIngredients(e.target.value)}
+                        placeholder="Chicken breast&#10;Bell peppers&#10;Broccoli&#10;Soy sauce"
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none resize-none"
+                        aria-label="Ingredients list"
+                      />
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={addMeal}
+                      disabled={!newMealTitle.trim() || loading}
+                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {loading ? 'Adding...' : 'Add Meal'}
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
 
-                {weekPlan[selectedDay].length === 0 && (
+              {/* Edit Meal Form */}
+              {editingMealId && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-blue-50 rounded-xl p-4 mb-6 border-2 border-blue-200"
+                >
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Meal</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Meal Title <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={editMealTitle}
+                        onChange={(e) => setEditMealTitle(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                        aria-label="Meal title"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Time Slot
+                        </label>
+                        <select
+                          value={editMealTimeSlot}
+                          onChange={(e) => setEditMealTimeSlot(e.target.value as 'breakfast' | 'lunch' | 'dinner' | 'snack')}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                        >
+                          <option value="breakfast">Breakfast</option>
+                          <option value="lunch">Lunch</option>
+                          <option value="dinner">Dinner</option>
+                          <option value="snack">Snack</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Assigned To (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={editMealAssignedTo}
+                          onChange={(e) => setEditMealAssignedTo(e.target.value)}
+                          placeholder="e.g., Bilal"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                          aria-label="Assigned to"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Ingredients (one per line) - Optional
+                      </label>
+                      <textarea
+                        value={editMealIngredients}
+                        onChange={(e) => setEditMealIngredients(e.target.value)}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none resize-none"
+                        aria-label="Ingredients list"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleEditSubmit}
+                        disabled={!editMealTitle.trim() || loading}
+                        className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        <Save className="w-4 h-4" />
+                        Save Changes
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleEditCancel}
+                        className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                      >
+                        Cancel
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => deleteMeal(editingMealId)}
+                        className="px-4 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 flex items-center justify-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </motion.button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Meals List - Grouped by Time Slot */}
+              <div className="space-y-4">
+                {(() => {
+                  const timeSlotOrder: ('breakfast' | 'lunch' | 'dinner' | 'snack')[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+                  const timeSlotLabels = {
+                    breakfast: 'Breakfast',
+                    lunch: 'Lunch',
+                    dinner: 'Dinner',
+                    snack: 'Snack',
+                  };
+                  
+                  // Group meals by time slot
+                  const mealsByTimeSlot: Record<string, typeof weekPlan['Mon']> = {};
+                  weekPlan[selectedDay].forEach(meal => {
+                    const slot = meal.timeSlot || 'dinner';
+                    if (!mealsByTimeSlot[slot]) {
+                      mealsByTimeSlot[slot] = [];
+                    }
+                    mealsByTimeSlot[slot].push(meal);
+                  });
+
+                  // Render meals grouped by time slot
+                  return (
+                    <>
+                      {timeSlotOrder.map((slot) => {
+                        const mealsInSlot = mealsByTimeSlot[slot] || [];
+                        if (mealsInSlot.length === 0 && editingMealId === null) return null;
+
+                        return (
+                          <div key={slot} className="space-y-2">
+                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+                              <Clock className="w-4 h-4" />
+                              {timeSlotLabels[slot]}
+                            </h3>
+                            {mealsInSlot.length === 0 ? (
+                              <div className="text-sm text-gray-400 italic pl-6">No meal planned</div>
+                            ) : (
+                              <div className="space-y-2">
+                                <AnimatePresence>
+                                  {mealsInSlot.map((meal, index) => (
+                                    <motion.div
+                                      key={meal.id}
+                                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                                      transition={{ duration: 0.3, delay: index * 0.1 }}
+                                      layout
+                                      className={`bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-4 border border-indigo-100 cursor-pointer hover:shadow-md transition-shadow ${
+                                        editingMealId === meal.id ? 'ring-2 ring-blue-500' : ''
+                                      }`}
+                                      onClick={() => editingMealId !== meal.id && handleEditClick(meal)}
+                                    >
+                                      <div className="flex justify-between items-start mb-2">
+                                        <div className="flex-1">
+                                          <h4 className="text-lg font-semibold text-gray-900">
+                                            {meal.title}
+                                          </h4>
+                                          {meal.assignedTo && (
+                                            <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
+                                              <User className="w-3 h-3" />
+                                              <span>({meal.assignedTo})</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {editingMealId !== meal.id && (
+                                          <div className="flex gap-1">
+                                            <motion.button
+                                              whileHover={{ scale: 1.1 }}
+                                              whileTap={{ scale: 0.9 }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditClick(meal);
+                                              }}
+                                              className="text-indigo-600 hover:text-indigo-800 focus:text-indigo-800 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:ring-offset-1 rounded p-1"
+                                              aria-label={`Edit meal: ${meal.title}`}
+                                            >
+                                              <Edit2 className="w-4 h-4" />
+                                            </motion.button>
+                                            <motion.button
+                                              whileHover={{ scale: 1.1 }}
+                                              whileTap={{ scale: 0.9 }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                deleteMeal(meal.id);
+                                              }}
+                                              className="text-red-500 hover:text-red-700 focus:text-red-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 rounded p-1"
+                                              aria-label={`Delete meal: ${meal.title}`}
+                                            >
+                                              <Trash2 className="w-4 h-4" />
+                                            </motion.button>
+                                          </div>
+                                        )}
+                                      </div>
+                                      {meal.ingredients && (
+                                        <div className="space-y-1 mt-2">
+                                          {meal.ingredients.split('\n').filter(Boolean).map((ingredient, idx) => (
+                                            <motion.div
+                                              key={idx}
+                                              initial={{ opacity: 0, x: -10 }}
+                                              animate={{ opacity: 1, x: 0 }}
+                                              transition={{ duration: 0.2, delay: 0.1 + idx * 0.05 }}
+                                              className="flex items-center gap-2 text-sm text-gray-600"
+                                            >
+                                              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
+                                              <span>{ingredient}</span>
+                                            </motion.div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </motion.div>
+                                  ))}
+                                </AnimatePresence>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+                
+                {weekPlan[selectedDay].length === 0 && !editingMealId && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -558,10 +892,10 @@ export default function MealPlanner() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
               className={`fixed bottom-4 right-4 px-6 py-4 rounded-lg shadow-lg z-50 ${
-                toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                toast?.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
               }`}
             >
-              {toast.message}
+              {toast?.message}
             </motion.div>
           )}
         </AnimatePresence>

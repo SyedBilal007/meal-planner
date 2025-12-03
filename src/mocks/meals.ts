@@ -2,12 +2,14 @@ export type Meal = {
   id: number;
   title: string;
   date: string; // ISO string or yyyy-mm-dd
+  timeSlot?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  assignedTo?: string; // Name of person assigned
   notes?: string;
 };
 
 let meals: Meal[] = [
-  { id: 1, title: 'Sunday Biryani', date: '2025-12-07' },
-  { id: 2, title: 'Pasta Night', date: '2025-12-08' },
+  { id: 1, title: 'Sunday Biryani', date: '2025-12-07', timeSlot: 'dinner', assignedTo: 'Bilal' },
+  { id: 2, title: 'Pasta Night', date: '2025-12-08', timeSlot: 'dinner' },
 ];
 
 let nextMealId = 3;

@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, Plus, Loader2 } from 'lucide-react';
+import { USE_MOCK_DATA } from '../config/dataSource';
 import { mockAddMeal } from '../mocks/meals';
+import { mealAPI } from '../utils/api';
+import { useHousehold } from '../contexts/HouseholdContext';
 
 interface MealSuggestion {
   name: string;
@@ -13,6 +16,7 @@ interface MealSuggestion {
 }
 
 export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => void }) {
+  const { currentHousehold } = useHousehold();
   const [showModal, setShowModal] = useState(false);
   const [ingredients, setIngredients] = useState<string[]>(['']);
   const [suggestions, setSuggestions] = useState<MealSuggestion[]>([]);
@@ -54,26 +58,41 @@ export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => v
     }, 500);
   };
 
-  const addMealToPlan = async (suggestion: MealSuggestion, date: string, _mealType: string) => {
-    try {
-      // Convert date to yyyy-mm-dd format
-      const dateString = new Date(date).toISOString().split('T')[0];
-      
-      // Build notes from description and recipe if available
-      let notes = suggestion.description;
-      if (suggestion.recipe) {
-        notes += '\n\nIngredients:\n';
-        suggestion.recipe.ingredients.forEach(ing => {
-          notes += `- ${ing.quantity} ${ing.unit || ''} ${ing.name}\n`;
-        });
-        notes += `\nInstructions:\n${suggestion.recipe.instructions}`;
-      }
+  const addMealToPlan = async (suggestion: MealSuggestion, date: string, mealType: string) => {
+    if (!USE_MOCK_DATA && !currentHousehold) {
+      alert('Please select a household first');
+      return;
+    }
 
-      await mockAddMeal({
-        title: suggestion.name,
-        date: dateString,
-        notes: notes || undefined,
-      });
+    try {
+      if (USE_MOCK_DATA) {
+        // Convert date to yyyy-mm-dd format
+        const dateString = new Date(date).toISOString().split('T')[0];
+        
+        // Build notes from description and recipe if available
+        let notes = suggestion.description;
+        if (suggestion.recipe) {
+          notes += '\n\nIngredients:\n';
+          suggestion.recipe.ingredients.forEach(ing => {
+            notes += `- ${ing.quantity} ${ing.unit || ''} ${ing.name}\n`;
+          });
+          notes += `\nInstructions:\n${suggestion.recipe.instructions}`;
+        }
+
+        await mockAddMeal({
+          title: suggestion.name,
+          date: dateString,
+          notes: notes || undefined,
+        });
+      } else {
+        // Real API path
+        await mealAPI.create({
+          name: suggestion.name,
+          mealType: mealType as 'breakfast' | 'lunch' | 'dinner' | 'snack',
+          date: new Date(date).toISOString(),
+          householdId: currentHousehold!.id,
+        });
+      }
       
       if (onMealAdded) {
         onMealAdded();
@@ -81,7 +100,11 @@ export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => v
       setShowModal(false);
     } catch (err: any) {
       console.error('Failed to add meal to plan:', err);
-      alert('Failed to add meal to plan');
+      alert(
+        err.response?.data?.error || 
+        err.response?.data?.message || 
+        'Failed to add meal to plan'
+      );
     }
   };
 
