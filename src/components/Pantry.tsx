@@ -106,8 +106,8 @@ export default function Pantry() {
     setEditingId(item.id);
     setEditFormData({
       name: item.name,
-      quantity: item.quantity || '',
-      unit: item.unit || '',
+      quantity: item.quantity ?? '',
+      unit: item.unit ?? '',
     });
     setError('');
   };
@@ -129,23 +129,23 @@ export default function Pantry() {
     setError('');
 
     try {
-      const payload: { name?: string; quantity?: string | null; unit?: string | null } = {};
+      const payload: { name?: string; quantity?: string; unit?: string } = {};
 
       if (editFormData.name.trim()) {
         payload.name = editFormData.name.trim();
       }
 
+      // Only include quantity if it has a value, otherwise omit (undefined)
       if (editFormData.quantity.trim()) {
         payload.quantity = editFormData.quantity.trim();
-      } else {
-        payload.quantity = null; // Clear quantity if empty
       }
+      // If empty, don't include in payload (will be undefined, not null)
 
+      // Only include unit if it has a value, otherwise omit (undefined)
       if (editFormData.unit.trim()) {
         payload.unit = editFormData.unit.trim();
-      } else {
-        payload.unit = null; // Clear unit if empty
       }
+      // If empty, don't include in payload (will be undefined, not null)
 
       const response = await pantryAPI.update(id, payload);
       const updatedItem = response.data;
