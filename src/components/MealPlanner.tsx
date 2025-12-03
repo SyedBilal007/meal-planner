@@ -1,11 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, Save, Edit2, Clock, User } from 'lucide-react';
+import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, Save, Edit2, Clock, User, BookOpen, X, MessageSquare, ChefHat } from 'lucide-react';
 import { USE_MOCK_DATA } from '../config/dataSource';
-import type { WeekPlan } from '../utils/groceryList';
-import { generateGroceryList, generateCategorizedGroceryList, downloadText } from '../utils/groceryList';
+import type { WeekPlan, GroceryItem, CategorizedGroceryList } from '../utils/groceryList';
+import { downloadText, groceryCategories } from '../utils/groceryList';
 import { getWeekStart, getWeekDateRange, convertMealsToWeekPlan } from '../utils/mealHelpers';
-import { mockGetMeals, mockAddMeal, mockUpdateMeal, mockDeleteMeal } from '../mocks/meals';
+import { 
+  mockGetMeals, 
+  mockAddMeal, 
+  mockUpdateMeal, 
+  mockDeleteMeal,
+  mockAddMealComment,
+  mockDeleteMealComment,
+  mockClaimMeal,
+  type Meal as MockMeal
+} from '../mocks/meals';
+import { 
+  mockGenerateGroceryFromMeals, 
+  mockToggleGroceryBought, 
+  mockAddGroceryItem, 
+  mockUpdateGroceryItem, 
+  mockDeleteGroceryItem,
+  type GroceryItem as MockGroceryItem 
+} from '../mocks/grocery';
+import { mockGetRecipes, type Recipe } from '../mocks/recipes';
 import { getDayOfWeek } from '../utils/mealHelpers';
 import { mealAPI } from '../utils/api';
 import { useHousehold } from '../contexts/HouseholdContext';
@@ -32,15 +50,34 @@ export default function MealPlanner() {
   const [newMealIngredients, setNewMealIngredients] = useState('');
   const [newMealTimeSlot, setNewMealTimeSlot] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('dinner');
   const [newMealAssignedTo, setNewMealAssignedTo] = useState('');
+  const [newMealRecipeId, setNewMealRecipeId] = useState<number | undefined>(undefined);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [editMealTitle, setEditMealTitle] = useState('');
   const [editMealIngredients, setEditMealIngredients] = useState('');
   const [editMealTimeSlot, setEditMealTimeSlot] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('dinner');
   const [editMealAssignedTo, setEditMealAssignedTo] = useState('');
+  const [editMealRecipeId, setEditMealRecipeId] = useState<number | undefined>(undefined);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [viewingRecipeId, setViewingRecipeId] = useState<number | null>(null);
+  const [mealRecipeMap, setMealRecipeMap] = useState<Record<string, number>>({});
+  const [currentMealData, setCurrentMealData] = useState<MockMeal | null>(null);
+  const [newCommentAuthor, setNewCommentAuthor] = useState('');
+  const [newCommentText, setNewCommentText] = useState('');
+  const [claimerName, setClaimerName] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [copyByCategory, setCopyByCategory] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [groceryItems, setGroceryItems] = useState<MockGroceryItem[]>([]);
+  const [groceryLoading, setGroceryLoading] = useState(false);
+  const [showAddGroceryForm, setShowAddGroceryForm] = useState(false);
+  const [editingGroceryId, setEditingGroceryId] = useState<number | null>(null);
+  const [newGroceryName, setNewGroceryName] = useState('');
+  const [newGroceryQuantity, setNewGroceryQuantity] = useState('');
+  const [newGroceryUnit, setNewGroceryUnit] = useState('');
+  const [editGroceryName, setEditGroceryName] = useState('');
+  const [editGroceryQuantity, setEditGroceryQuantity] = useState('');
+  const [editGroceryUnit, setEditGroceryUnit] = useState('');
 
   // Fetch meals from mock data or real API
   const fetchMeals = useCallback(async () => {
@@ -58,9 +95,10 @@ export default function MealPlanner() {
         
         // Convert mock meals to WeekPlan format
         const plan: WeekPlan = {
-          Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
+      Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
         };
         
+        const recipeMap: Record<string, number> = {};
         allMeals.forEach((meal) => {
           const mealDate = new Date(meal.date);
           // Check if meal is in current week
@@ -73,20 +111,24 @@ export default function MealPlanner() {
               timeSlot: meal.timeSlot,
               assignedTo: meal.assignedTo,
             });
+            if (meal.recipeId) {
+              recipeMap[String(meal.id)] = meal.recipeId;
+            }
           }
         });
+        setMealRecipeMap(recipeMap);
         
         setWeekPlan(plan);
       } else {
         // Real API path
-        const { start, end } = getWeekDateRange(weekStart);
+      const { start, end } = getWeekDateRange(weekStart);
         const response = await mealAPI.getAll({
           householdId: currentHousehold!.id,
-          startDate: start,
-          endDate: end,
-        });
+        startDate: start,
+        endDate: end,
+      });
         const plan = convertMealsToWeekPlan(response.data, weekStart);
-        setWeekPlan(plan);
+      setWeekPlan(plan);
       }
     } catch (error: any) {
       console.error('Failed to fetch meals:', error);
@@ -104,6 +146,147 @@ export default function MealPlanner() {
   useEffect(() => {
     fetchMeals();
   }, [fetchMeals]);
+
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      loadRecipes();
+    }
+  }, []);
+
+  // Load and generate grocery list from meals
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      loadGroceryList();
+    }
+  }, [weekPlan]);
+
+  const loadGroceryList = async () => {
+    setGroceryLoading(true);
+    try {
+      // Get all meals for the current week
+      const allMeals = await mockGetMeals();
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      
+      // Filter meals in current week
+      const weekMeals = allMeals.filter(meal => {
+        const mealDate = new Date(meal.date);
+        return mealDate >= weekStart && mealDate <= weekEnd;
+      });
+      
+      // Generate grocery list from meals
+      const items = await mockGenerateGroceryFromMeals(weekMeals);
+      setGroceryItems(items);
+    } catch (error) {
+      console.error('Failed to load grocery list:', error);
+    } finally {
+      setGroceryLoading(false);
+    }
+  };
+
+  const loadRecipes = async () => {
+    try {
+      const data = await mockGetRecipes();
+      setRecipes(data);
+    } catch (error) {
+      console.error('Failed to load recipes:', error);
+    }
+  };
+
+  const handleViewRecipe = (mealId: string) => {
+    if (!USE_MOCK_DATA) return;
+    const recipeId = mealRecipeMap[mealId];
+    if (recipeId) {
+      setViewingRecipeId(recipeId);
+    }
+  };
+
+  const handleToggleBought = async (id: number) => {
+    try {
+      const updated = await mockToggleGroceryBought(id);
+      if (updated) {
+        setGroceryItems(prev => prev.map(item => item.id === id ? updated : item));
+      }
+    } catch (error) {
+      console.error('Failed to toggle bought status:', error);
+      showToast('Failed to update item', 'error');
+    }
+  };
+
+  const handleAddGroceryItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroceryName.trim()) return;
+
+    try {
+      const quantity = parseFloat(newGroceryQuantity) || 1;
+      const newItem = await mockAddGroceryItem({
+        name: newGroceryName.trim(),
+        quantity,
+        unit: newGroceryUnit.trim() || '',
+        bought: false,
+      });
+      setGroceryItems(prev => [...prev, newItem]);
+      setNewGroceryName('');
+      setNewGroceryQuantity('');
+      setNewGroceryUnit('');
+      setShowAddGroceryForm(false);
+      showToast('Item added to grocery list!');
+    } catch (error) {
+      console.error('Failed to add grocery item:', error);
+      showToast('Failed to add item', 'error');
+    }
+  };
+
+  const handleEditGroceryClick = (item: MockGroceryItem) => {
+    setEditingGroceryId(item.id);
+    setEditGroceryName(item.name);
+    setEditGroceryQuantity(String(item.quantity));
+    setEditGroceryUnit(item.unit);
+  };
+
+  const handleEditGroceryCancel = () => {
+    setEditingGroceryId(null);
+    setEditGroceryName('');
+    setEditGroceryQuantity('');
+    setEditGroceryUnit('');
+  };
+
+  const handleEditGrocerySubmit = async () => {
+    if (!editGroceryName.trim() || !editingGroceryId) return;
+
+    try {
+      const quantity = parseFloat(editGroceryQuantity) || 1;
+      const updated = await mockUpdateGroceryItem(editingGroceryId, {
+        name: editGroceryName.trim(),
+        quantity,
+        unit: editGroceryUnit.trim() || '',
+      });
+      if (updated) {
+        setGroceryItems(prev => prev.map(item => item.id === editingGroceryId ? updated : item));
+        handleEditGroceryCancel();
+        showToast('Item updated!');
+      }
+    } catch (error) {
+      console.error('Failed to update grocery item:', error);
+      showToast('Failed to update item', 'error');
+    }
+  };
+
+  const handleDeleteGroceryItem = async (id: number) => {
+    if (!confirm('Are you sure you want to remove this item from the grocery list?')) return;
+
+    try {
+      await mockDeleteGroceryItem(id);
+      setGroceryItems(prev => prev.filter(item => item.id !== id));
+      if (editingGroceryId === id) {
+        handleEditGroceryCancel();
+      }
+      showToast('Item removed from grocery list!');
+    } catch (error) {
+      console.error('Failed to delete grocery item:', error);
+      showToast('Failed to remove item', 'error');
+    }
+  };
 
   const addMeal = async () => {
     if (!newMealTitle.trim()) return;
@@ -126,11 +309,12 @@ export default function MealPlanner() {
           timeSlot: newMealTimeSlot,
           assignedTo: newMealAssignedTo.trim() || undefined,
           notes: newMealIngredients.trim() || undefined,
+          recipeId: newMealRecipeId,
         });
       } else {
         // Real API path
-        await mealAPI.create({
-          name: newMealTitle.trim(),
+      await mealAPI.create({
+        name: newMealTitle.trim(),
           mealType: 'dinner',
           date: mealDate.toISOString(),
           householdId: currentHousehold!.id,
@@ -139,11 +323,17 @@ export default function MealPlanner() {
       
       // Refresh meals to get updated week plan
       await fetchMeals();
+      
+      // Refresh grocery list if using mock data
+      if (USE_MOCK_DATA) {
+        await loadGroceryList();
+      }
 
       setNewMealTitle('');
       setNewMealIngredients('');
       setNewMealTimeSlot('dinner');
       setNewMealAssignedTo('');
+      setNewMealRecipeId(undefined);
       showToast('Meal added successfully!');
     } catch (error: any) {
       console.error('Failed to add meal:', error);
@@ -156,12 +346,22 @@ export default function MealPlanner() {
     }
   };
 
-  const handleEditClick = (meal: WeekPlan['Mon'][0]) => {
+  const handleEditClick = async (meal: WeekPlan['Mon'][0]) => {
     setEditingMealId(meal.id);
     setEditMealTitle(meal.title);
     setEditMealIngredients(meal.ingredients || '');
     setEditMealTimeSlot(meal.timeSlot || 'dinner');
     setEditMealAssignedTo(meal.assignedTo || '');
+    // Get full meal data including comments and claimedBy
+    if (USE_MOCK_DATA) {
+      const allMeals = await mockGetMeals();
+      const mealData = allMeals.find(m => m.id === parseInt(meal.id, 10));
+      if (mealData) {
+        setEditMealRecipeId(mealData.recipeId);
+        setCurrentMealData(mealData);
+        setClaimerName(mealData.claimedBy || '');
+      }
+    }
   };
 
   const handleEditCancel = () => {
@@ -170,6 +370,11 @@ export default function MealPlanner() {
     setEditMealIngredients('');
     setEditMealTimeSlot('dinner');
     setEditMealAssignedTo('');
+    setEditMealRecipeId(undefined);
+    setCurrentMealData(null);
+    setNewCommentAuthor('');
+    setNewCommentText('');
+    setClaimerName('');
   };
 
   const handleEditSubmit = async () => {
@@ -189,6 +394,7 @@ export default function MealPlanner() {
               timeSlot: editMealTimeSlot,
               assignedTo: editMealAssignedTo.trim() || undefined,
               notes: editMealIngredients.trim() || undefined,
+              recipeId: editMealRecipeId,
               // Preserve the date
               date: existingMeal.date,
             });
@@ -203,7 +409,24 @@ export default function MealPlanner() {
       }
       
       await fetchMeals();
-      handleEditCancel();
+      
+      // Refresh grocery list if using mock data
+      if (USE_MOCK_DATA) {
+        await loadGroceryList();
+        // Reload current meal data to get updated comments/claimedBy
+        if (editingMealId) {
+          const mealIdNum = parseInt(editingMealId, 10);
+          if (!isNaN(mealIdNum)) {
+            const allMeals = await mockGetMeals();
+            const updatedMeal = allMeals.find(m => m.id === mealIdNum);
+            if (updatedMeal) {
+              setCurrentMealData(updatedMeal);
+            }
+          }
+        }
+      }
+      
+      // Don't cancel - keep editing mode open
       showToast('Meal updated successfully!');
     } catch (error: any) {
       console.error('Failed to update meal:', error);
@@ -227,9 +450,15 @@ export default function MealPlanner() {
         }
       } else {
         // Real API path
-        await mealAPI.delete(mealId);
+      await mealAPI.delete(mealId);
       }
       await fetchMeals(); // Refresh to update week plan
+      
+      // Refresh grocery list if using mock data
+      if (USE_MOCK_DATA) {
+        await loadGroceryList();
+      }
+      
       if (editingMealId === mealId) {
         handleEditCancel();
       }
@@ -253,31 +482,35 @@ export default function MealPlanner() {
   };
 
   const copyGroceryList = async () => {
-    // For now, use local generation. Later can fetch from backend
+    try {
     let listText: string;
     
     if (copyByCategory) {
-      const categorizedList = generateCategorizedGroceryList(weekPlan);
+        // Convert mock grocery items to categorized format
+        const categorizedList = categorizeGroceryItemsFromMock(groceryItems);
       const categoryTexts: string[] = [];
       
       Object.entries(categorizedList).forEach(([categoryName, categoryData]) => {
         if (categoryData.items.length > 0) {
           categoryTexts.push(`\n${categoryData.category.icon} ${categoryName}`);
           categoryData.items.forEach(item => {
-            categoryTexts.push(`• ${item.qty}${item.unit ? ` ${item.unit}` : ''} × ${item.name}`);
+              const mockItem = groceryItems.find(gi => String(gi.id) === item.id);
+              const boughtMark = mockItem?.bought ? '✓ ' : '';
+              categoryTexts.push(`• ${boughtMark}${item.qty}${item.unit ? ` ${item.unit}` : ''} × ${item.name}`);
           });
         }
       });
       
       listText = categoryTexts.join('\n').trim();
     } else {
-      const groceryList = generateGroceryList(weekPlan);
-      listText = groceryList
-        .map(item => `• ${item.qty}${item.unit ? ` ${item.unit}` : ''} × ${item.name}`)
+        listText = groceryItems
+          .map(item => {
+            const boughtMark = item.bought ? '✓ ' : '';
+            return `• ${boughtMark}${item.quantity}${item.unit ? ` ${item.unit}` : ''} × ${item.name}`;
+          })
         .join('\n');
     }
     
-    try {
       await navigator.clipboard.writeText(listText);
       showToast('Grocery list copied to clipboard!');
     } catch {
@@ -286,13 +519,77 @@ export default function MealPlanner() {
   };
 
   const downloadGroceryList = () => {
-    const groceryList = generateGroceryList(weekPlan);
-    const listText = groceryList
-      .map(item => `${item.qty}\t${item.name}${item.unit ? ` (${item.unit})` : ''}`)
+    const listText = groceryItems
+      .map(item => {
+        const boughtMark = item.bought ? '[✓] ' : '';
+        return `${boughtMark}${item.quantity}\t${item.name}${item.unit ? ` (${item.unit})` : ''}`;
+      })
       .join('\n');
     
-    downloadText('grocery-list.txt', listText);
+    downloadText('grocery_list.txt', listText);
     showToast('Grocery list downloaded!');
+  };
+
+  // Helper to categorize mock grocery items
+  const categorizeGroceryItemsFromMock = (items: MockGroceryItem[]): CategorizedGroceryList => {
+    const categorized: CategorizedGroceryList = {};
+    const otherItems: GroceryItem[] = [];
+
+    // Initialize categories
+    groceryCategories.forEach((category) => {
+      categorized[category.name] = {
+        items: [],
+        category
+      };
+    });
+
+    items.forEach(item => {
+      let categorized_item = false;
+      const itemName = item.name.toLowerCase();
+
+      // Check each category for keyword matches
+      for (const category of groceryCategories) {
+        const hasKeyword = category.keywords.some((keyword: string) => 
+          itemName.includes(keyword.toLowerCase())
+        );
+
+        if (hasKeyword) {
+          categorized[category.name].items.push({
+            id: String(item.id),
+            name: item.name,
+            qty: item.quantity,
+            unit: item.unit,
+          });
+          categorized_item = true;
+          break;
+        }
+      }
+
+      // If no category matched, add to "Other"
+      if (!categorized_item) {
+        otherItems.push({
+          id: String(item.id),
+          name: item.name,
+          qty: item.quantity,
+          unit: item.unit,
+        });
+      }
+    });
+
+    // Add "Other" category if there are uncategorized items
+    if (otherItems.length > 0) {
+      categorized['Other'] = {
+        items: otherItems.sort((a, b) => a.name.localeCompare(b.name)),
+        category: {
+          name: 'Other',
+          keywords: [],
+          color: 'gray',
+          icon: '📦'
+        }
+      };
+    }
+
+    return categorized;
   };
 
   const toggleCategoryExpansion = (categoryName: string) => {
@@ -405,28 +702,28 @@ export default function MealPlanner() {
 
               {/* Add Meal Form */}
               {!editingMealId && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: 0.5 }}
-                  className="bg-gray-50 rounded-xl p-4 mb-6"
-                >
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.5 }}
+                className="bg-gray-50 rounded-xl p-4 mb-6"
+              >
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Meal</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                         Meal Title <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={newMealTitle}
-                        onChange={(e) => setNewMealTitle(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addMeal()}
-                        placeholder="e.g., Chicken Stir Fry"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
-                        aria-label="Meal title"
-                      />
-                    </div>
+                    </label>
+                    <input
+                      type="text"
+                      value={newMealTitle}
+                      onChange={(e) => setNewMealTitle(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addMeal()}
+                      placeholder="e.g., Chicken Stir Fry"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                      aria-label="Meal title"
+                    />
+                  </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -459,29 +756,49 @@ export default function MealPlanner() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Ingredients (one per line) - Optional
+                        Link Recipe (Optional)
                       </label>
-                      <textarea
-                        value={newMealIngredients}
-                        onChange={(e) => setNewMealIngredients(e.target.value)}
-                        placeholder="Chicken breast&#10;Bell peppers&#10;Broccoli&#10;Soy sauce"
-                        rows={4}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none resize-none"
-                        aria-label="Ingredients list"
-                      />
-                    </div>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={addMeal}
-                      disabled={!newMealTitle.trim() || loading}
-                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      {loading ? 'Adding...' : 'Add Meal'}
-                    </motion.button>
+                      <select
+                        value={newMealRecipeId || ''}
+                        onChange={(e) => setNewMealRecipeId(e.target.value ? parseInt(e.target.value) : undefined)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                      >
+                        <option value="">No recipe</option>
+                        {recipes.map(recipe => (
+                          <option key={recipe.id} value={recipe.id}>
+                            {recipe.title}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Select a recipe from your library to link to this meal
+                      </p>
                   </div>
-                </motion.div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ingredients (one per line) - Optional
+                    </label>
+                    <textarea
+                      value={newMealIngredients}
+                      onChange={(e) => setNewMealIngredients(e.target.value)}
+                      placeholder="Chicken breast&#10;Bell peppers&#10;Broccoli&#10;Soy sauce"
+                      rows={4}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none resize-none"
+                      aria-label="Ingredients list"
+                    />
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={addMeal}
+                    disabled={!newMealTitle.trim() || loading}
+                    className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {loading ? 'Adding...' : 'Add Meal'}
+                  </motion.button>
+                </div>
+              </motion.div>
               )}
 
               {/* Edit Meal Form */}
@@ -492,7 +809,7 @@ export default function MealPlanner() {
                   className="bg-blue-50 rounded-xl p-4 mb-6 border-2 border-blue-200"
                 >
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Meal</h3>
-                  <div className="space-y-4">
+              <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Meal Title <span className="text-red-500">*</span>
@@ -547,6 +864,167 @@ export default function MealPlanner() {
                         aria-label="Ingredients list"
                       />
                     </div>
+
+                    {/* Claim Cooking Responsibility */}
+                    <div className="bg-white rounded-lg p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <ChefHat className="w-5 h-5 text-indigo-600" />
+                        <h4 className="text-sm font-semibold text-gray-900">Cooking Responsibility</h4>
+                      </div>
+                      {currentMealData?.claimedBy ? (
+                        <div className="mb-3">
+                          <p className="text-sm text-gray-700">
+                            <span className="font-medium">Claimed by:</span> {currentMealData.claimedBy}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mb-3">
+                          <p className="text-sm text-gray-500 italic">Not claimed yet</p>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={claimerName}
+                          onChange={(e) => setClaimerName(e.target.value)}
+                          placeholder="Enter your name"
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none text-sm"
+                        />
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={async () => {
+                            if (!claimerName.trim() || !editingMealId) return;
+                            try {
+                              const mealIdNum = parseInt(editingMealId, 10);
+                              if (!isNaN(mealIdNum)) {
+                                const updated = await mockClaimMeal(mealIdNum, claimerName.trim());
+                                if (updated) {
+                                  setCurrentMealData(updated);
+                                  setClaimerName('');
+                                  showToast('Meal claimed successfully!');
+                                }
+                              }
+                            } catch (error) {
+                              console.error('Failed to claim meal:', error);
+                              showToast('Failed to claim meal', 'error');
+                            }
+                          }}
+                          disabled={!claimerName.trim()}
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        >
+                          Claim Meal
+                        </motion.button>
+                      </div>
+                    </div>
+
+                    {/* Comments Section */}
+                    <div className="bg-white rounded-lg p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-3">
+                        <MessageSquare className="w-5 h-5 text-indigo-600" />
+                        <h4 className="text-sm font-semibold text-gray-900">Comments</h4>
+                      </div>
+                      
+                      {/* Comments List */}
+                      <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                        {currentMealData?.comments && currentMealData.comments.length > 0 ? (
+                          currentMealData.comments.map((comment) => (
+                            <div key={comment.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm font-medium text-gray-900">{comment.author}</span>
+                                    <span className="text-xs text-gray-500">
+                                      {new Date(comment.createdAt).toLocaleDateString()} {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-700">{comment.text}</p>
+                                </div>
+                                <motion.button
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={async () => {
+                                    if (!editingMealId) return;
+                                    try {
+                                      const mealIdNum = parseInt(editingMealId, 10);
+                                      if (!isNaN(mealIdNum)) {
+                                        const updated = await mockDeleteMealComment(mealIdNum, comment.id);
+                                        if (updated) {
+                                          setCurrentMealData(updated);
+                                          showToast('Comment deleted');
+                                        }
+                                      }
+                                    } catch (error) {
+                                      console.error('Failed to delete comment:', error);
+                                      showToast('Failed to delete comment', 'error');
+                                    }
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-1"
+                                  aria-label="Delete comment"
+                                >
+                                  <X className="w-4 h-4" />
+                                </motion.button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-gray-500 italic text-center py-2">No comments yet</p>
+                        )}
+                      </div>
+
+                      {/* Add Comment Form */}
+                      <div className="space-y-2 border-t border-gray-200 pt-3">
+                        <div>
+                          <input
+                            type="text"
+                            value={newCommentAuthor}
+                            onChange={(e) => setNewCommentAuthor(e.target.value)}
+                            placeholder="Your name"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <textarea
+                            value={newCommentText}
+                            onChange={(e) => setNewCommentText(e.target.value)}
+                            placeholder="Add a comment..."
+                            rows={2}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none resize-none text-sm"
+                          />
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={async () => {
+                              if (!newCommentAuthor.trim() || !newCommentText.trim() || !editingMealId) return;
+                              try {
+                                const mealIdNum = parseInt(editingMealId, 10);
+                                if (!isNaN(mealIdNum)) {
+                                  const updated = await mockAddMealComment(mealIdNum, {
+                                    author: newCommentAuthor.trim(),
+                                    text: newCommentText.trim(),
+                                  });
+                                  if (updated) {
+                                    setCurrentMealData(updated);
+                                    setNewCommentAuthor('');
+                                    setNewCommentText('');
+                                    showToast('Comment added!');
+                                  }
+                                }
+                              } catch (error) {
+                                console.error('Failed to add comment:', error);
+                                showToast('Failed to add comment', 'error');
+                              }
+                            }}
+                            disabled={!newCommentAuthor.trim() || !newCommentText.trim()}
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-1"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add
+                          </motion.button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex gap-2">
                       <motion.button
                         whileHover={{ scale: 1.02 }}
@@ -618,24 +1096,24 @@ export default function MealPlanner() {
                               <div className="text-sm text-gray-400 italic pl-6">No meal planned</div>
                             ) : (
                               <div className="space-y-2">
-                                <AnimatePresence>
+                <AnimatePresence>
                                   {mealsInSlot.map((meal, index) => (
-                                    <motion.div
-                                      key={meal.id}
-                                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                                      exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                                      transition={{ duration: 0.3, delay: index * 0.1 }}
-                                      layout
+                    <motion.div
+                      key={meal.id}
+                      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                      transition={{ duration: 0.3, delay: index * 0.1 }}
+                      layout
                                       className={`bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-4 border border-indigo-100 cursor-pointer hover:shadow-md transition-shadow ${
                                         editingMealId === meal.id ? 'ring-2 ring-blue-500' : ''
                                       }`}
                                       onClick={() => editingMealId !== meal.id && handleEditClick(meal)}
-                                    >
+                    >
                                       <div className="flex justify-between items-start mb-2">
                                         <div className="flex-1">
                                           <h4 className="text-lg font-semibold text-gray-900">
-                                            {meal.title}
+                          {meal.title}
                                           </h4>
                                           {meal.assignedTo && (
                                             <div className="flex items-center gap-1 text-sm text-gray-600 mt-1">
@@ -643,12 +1121,26 @@ export default function MealPlanner() {
                                               <span>({meal.assignedTo})</span>
                                             </div>
                                           )}
+                                          {mealRecipeMap[meal.id] && (
+                                            <motion.button
+                                              whileHover={{ scale: 1.05 }}
+                                              whileTap={{ scale: 0.95 }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleViewRecipe(meal.id);
+                                              }}
+                                              className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                            >
+                                              <BookOpen className="w-3 h-3" />
+                                              View Recipe
+                                            </motion.button>
+                                          )}
                                         </div>
                                         {editingMealId !== meal.id && (
                                           <div className="flex gap-1">
-                                            <motion.button
-                                              whileHover={{ scale: 1.1 }}
-                                              whileTap={{ scale: 0.9 }}
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleEditClick(meal);
@@ -665,33 +1157,33 @@ export default function MealPlanner() {
                                                 e.stopPropagation();
                                                 deleteMeal(meal.id);
                                               }}
-                                              className="text-red-500 hover:text-red-700 focus:text-red-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 rounded p-1"
-                                              aria-label={`Delete meal: ${meal.title}`}
-                                            >
-                                              <Trash2 className="w-4 h-4" />
-                                            </motion.button>
+                          className="text-red-500 hover:text-red-700 focus:text-red-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-1 rounded p-1"
+                          aria-label={`Delete meal: ${meal.title}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </motion.button>
                                           </div>
                                         )}
-                                      </div>
-                                      {meal.ingredients && (
+                      </div>
+                      {meal.ingredients && (
                                         <div className="space-y-1 mt-2">
-                                          {meal.ingredients.split('\n').filter(Boolean).map((ingredient, idx) => (
-                                            <motion.div
-                                              key={idx}
-                                              initial={{ opacity: 0, x: -10 }}
-                                              animate={{ opacity: 1, x: 0 }}
-                                              transition={{ duration: 0.2, delay: 0.1 + idx * 0.05 }}
-                                              className="flex items-center gap-2 text-sm text-gray-600"
-                                            >
-                                              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
-                                              <span>{ingredient}</span>
-                                            </motion.div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </motion.div>
-                                  ))}
-                                </AnimatePresence>
+                          {meal.ingredients.split('\n').filter(Boolean).map((ingredient, idx) => (
+                            <motion.div
+                              key={idx}
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.2, delay: 0.1 + idx * 0.05 }}
+                              className="flex items-center gap-2 text-sm text-gray-600"
+                            >
+                              <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
+                              <span>{ingredient}</span>
+                            </motion.div>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
                               </div>
                             )}
                           </div>
@@ -771,10 +1263,107 @@ export default function MealPlanner() {
               </div>
             </div>
 
+            {/* Add Grocery Item Form */}
+            {showAddGroceryForm && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-indigo-50 rounded-xl p-4 mb-6 border-2 border-indigo-200"
+              >
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Item to Grocery List</h3>
+                <form onSubmit={handleAddGroceryItem} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Item Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newGroceryName}
+                        onChange={(e) => setNewGroceryName(e.target.value)}
+                        placeholder="e.g., Onion"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Quantity
+                      </label>
+                      <input
+                        type="number"
+                        value={newGroceryQuantity}
+                        onChange={(e) => setNewGroceryQuantity(e.target.value)}
+                        placeholder="1"
+                        min="0"
+                        step="0.1"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Unit
+                      </label>
+                      <input
+                        type="text"
+                        value={newGroceryUnit}
+                        onChange={(e) => setNewGroceryUnit(e.target.value)}
+                        placeholder="e.g., pcs, kg, L"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <motion.button
+                      type="submit"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Item
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setShowAddGroceryForm(false);
+                        setNewGroceryName('');
+                        setNewGroceryQuantity('');
+                        setNewGroceryUnit('');
+                      }}
+                      className="px-4 bg-gray-500 text-white rounded-lg font-medium hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+                    >
+                      Cancel
+                    </motion.button>
+                  </div>
+                </form>
+              </motion.div>
+            )}
+
+            {/* Add Item Button */}
+            {!showAddGroceryForm && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setShowAddGroceryForm(true)}
+                className="mb-4 w-full sm:w-auto bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Item Manually
+              </motion.button>
+            )}
+
             {/* Categorized Grocery List */}
-            {(() => {
-              const categorizedList = generateCategorizedGroceryList(weekPlan);
-              const hasItems = Object.values(categorizedList).some(categoryData => categoryData.items.length > 0);
+            {groceryLoading ? (
+              <div className="p-12 text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <p className="text-gray-600 mt-4">Loading grocery list...</p>
+              </div>
+            ) : (() => {
+              const categorizedList = categorizeGroceryItemsFromMock(groceryItems);
+              const hasItems = groceryItems.length > 0;
               
               if (!hasItems) {
                 return (
@@ -789,7 +1378,7 @@ export default function MealPlanner() {
                       No ingredients to shop for
                     </h3>
                     <p className="text-gray-500 mb-4">
-                      Add some meals to automatically generate your grocery list
+                      Add some meals with ingredients to automatically generate your grocery list
                     </p>
                   </motion.div>
                 );
@@ -848,24 +1437,110 @@ export default function MealPlanner() {
                             >
                               <div className="p-4 bg-gray-50">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                  {categoryData.items.map((item, index) => (
+                                  {categoryData.items.map((item, index) => {
+                                    const mockItem = groceryItems.find(gi => String(gi.id) === item.id);
+                                    if (!mockItem) return null;
+                                    
+                                    return (
                                     <motion.div
                                       key={item.id}
                                       initial={{ opacity: 0, scale: 0.95 }}
                                       animate={{ opacity: 1, scale: 1 }}
                                       transition={{ duration: 0.3, delay: index * 0.05 }}
-                                      className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm"
-                                    >
-                                      <div className="flex justify-between items-center">
-                                        <span className="font-medium text-gray-900 capitalize">
+                                        className={`bg-white rounded-lg p-3 border-2 shadow-sm ${
+                                          mockItem.bought ? 'border-green-300 bg-green-50 opacity-75' : 'border-gray-200'
+                                        }`}
+                                      >
+                                        {editingGroceryId === mockItem.id ? (
+                                          <div className="space-y-2">
+                                            <input
+                                              type="text"
+                                              value={editGroceryName}
+                                              onChange={(e) => setEditGroceryName(e.target.value)}
+                                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                                            />
+                                            <div className="flex gap-2">
+                                              <input
+                                                type="number"
+                                                value={editGroceryQuantity}
+                                                onChange={(e) => setEditGroceryQuantity(e.target.value)}
+                                                min="0"
+                                                step="0.1"
+                                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={editGroceryUnit}
+                                                onChange={(e) => setEditGroceryUnit(e.target.value)}
+                                                placeholder="unit"
+                                                className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
+                                              />
+                                            </div>
+                                            <div className="flex gap-1">
+                                              <motion.button
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                onClick={handleEditGrocerySubmit}
+                                                className="flex-1 bg-green-600 text-white py-1 px-2 rounded text-xs font-medium hover:bg-green-700"
+                                              >
+                                                <Save className="w-3 h-3 inline mr-1" />
+                                                Save
+                                              </motion.button>
+                                              <motion.button
+                                                whileHover={{ scale: 1.05 }}
+                                                whileTap={{ scale: 0.95 }}
+                                                onClick={handleEditGroceryCancel}
+                                                className="px-2 bg-gray-500 text-white rounded text-xs font-medium hover:bg-gray-600"
+                                              >
+                                                Cancel
+                                              </motion.button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                              <input
+                                                type="checkbox"
+                                                checked={mockItem.bought || false}
+                                                onChange={() => handleToggleBought(mockItem.id)}
+                                                className="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 focus:ring-2 flex-shrink-0"
+                                              />
+                                              <div className="flex-1 min-w-0">
+                                                <span className={`font-medium text-gray-900 capitalize block truncate ${
+                                                  mockItem.bought ? 'line-through text-gray-500' : ''
+                                                }`}>
                                           {item.name}
                                         </span>
                                         <span className="text-sm text-gray-600">
                                           {item.qty}{item.unit ? ` ${item.unit}` : ''}
                                         </span>
                                       </div>
+                                            </div>
+                                            <div className="flex gap-1 flex-shrink-0">
+                                              <motion.button
+                                                whileHover={{ scale: 1.1 }}
+                                                whileTap={{ scale: 0.9 }}
+                                                onClick={() => handleEditGroceryClick(mockItem)}
+                                                className="text-indigo-600 hover:text-indigo-800 p-1"
+                                                aria-label="Edit item"
+                                              >
+                                                <Edit2 className="w-4 h-4" />
+                                              </motion.button>
+                                              <motion.button
+                                                whileHover={{ scale: 1.1 }}
+                                                whileTap={{ scale: 0.9 }}
+                                                onClick={() => handleDeleteGroceryItem(mockItem.id)}
+                                                className="text-red-500 hover:text-red-700 p-1"
+                                                aria-label="Delete item"
+                                              >
+                                                <Trash2 className="w-4 h-4" />
+                                              </motion.button>
+                                            </div>
+                                          </div>
+                                        )}
                                     </motion.div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </motion.div>
@@ -894,6 +1569,85 @@ export default function MealPlanner() {
               {toast?.message}
             </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Recipe Detail Modal */}
+        <AnimatePresence>
+          {viewingRecipeId && (() => {
+            const recipe = recipes.find(r => r.id === viewingRecipeId);
+            if (!recipe) return null;
+            
+            return (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+                onClick={() => setViewingRecipeId(null)}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+                >
+                  <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+                    <h2 className="text-3xl font-bold text-gray-900">{recipe.title}</h2>
+                    <button
+                      onClick={() => setViewingRecipeId(null)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+      </div>
+                  <div className="p-6 space-y-6">
+                    {recipe.description && (
+                      <p className="text-gray-700">{recipe.description}</p>
+                    )}
+                    <div className="flex items-center gap-4">
+                      {recipe.cuisineType && (
+                        <span className="bg-indigo-100 text-indigo-800 text-sm font-medium px-3 py-1 rounded">
+                          {recipe.cuisineType}
+                        </span>
+                      )}
+                      {recipe.rating && (
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <span key={star} className={star <= recipe.rating! ? 'text-yellow-400' : 'text-gray-300'}>★</span>
+                          ))}
+                          <span className="text-sm text-gray-600 ml-1">({recipe.rating}/5)</span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-3">Ingredients</h3>
+                      <ul className="space-y-2">
+                        {recipe.ingredients.map((ing, idx) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-indigo-500 rounded-full"></span>
+                            <span className="text-gray-700">
+                              {ing.quantity} {ing.unit} {ing.name}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    {recipe.instructions && (
+                      <div>
+                        <h3 className="text-xl font-semibold text-gray-900 mb-3">Instructions</h3>
+                        <div className="prose max-w-none">
+                          <pre className="whitespace-pre-wrap font-sans text-gray-700">
+                            {recipe.instructions}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              </motion.div>
+            );
+          })()}
         </AnimatePresence>
       </div>
     </div>
