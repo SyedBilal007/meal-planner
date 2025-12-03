@@ -189,3 +189,6 @@ FRONTEND_URL=https://your-app.vercel.app
 
 **Need help?** Check the error message in the browser console (F12) for more details!
 
+
+
+

@@ -159,3 +159,6 @@ npm run db:studio
 | `FRONTEND_URL` | Frontend URL for CORS | Yes |
 | `OPENAI_API_KEY` | OpenAI API key for AI features | Optional |
 
+
+
+

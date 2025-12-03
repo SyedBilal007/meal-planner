@@ -45,3 +45,6 @@ export const emitToHousehold = (io: Server, householdId: string, event: string, 
   io.to(`household:${householdId}`).emit(event, data);
 };
 
+
+
+

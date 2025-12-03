@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// FastAPI backend URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://mealsync.up.railway.app';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -11,9 +12,11 @@ export const api = axios.create({
 
 // Add auth token to requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  // Try new key first, then fallback to old key for backward compatibility
+  const token = localStorage.getItem('mealsync_token') || localStorage.getItem('token');
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    const tokenType = localStorage.getItem('token_type') || 'Bearer';
+    config.headers.Authorization = `${tokenType} ${token}`;
   }
   return config;
 });
@@ -22,22 +25,31 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Clear all auth-related storage
+      localStorage.removeItem('mealsync_token');
+      localStorage.removeItem('mealsync_user');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      localStorage.removeItem('token_type');
+      
+      // Only redirect if not already on login/register page
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
 );
 
-// Auth API
+// Auth API - FastAPI endpoints
 export const authAPI = {
-  register: (data: { email: string; password: string; name?: string; dietaryPreferences?: string }) =>
-    api.post('/auth/register', data),
+  register: (data: { email: string; password: string; full_name?: string }) =>
+    api.post('/api/v1/auth/register', data),
   login: (data: { email: string; password: string }) =>
-    api.post('/auth/login', data),
-  getMe: () => api.get('/auth/me'),
+    api.post('/api/v1/auth/login', data),
+  getMe: () => api.get('/api/v1/auth/me'),
 };
 
 // Household API
@@ -118,4 +130,17 @@ export const aiAPI = {
   generateMeals: (data: { ingredients: string[] }) =>
     api.post('/ai/generate-meals', data),
 };
+
+// Pantry API - FastAPI endpoints
+export const pantryAPI = {
+  getAll: () => api.get('/api/v1/pantry'),
+  create: (data: { name: string; quantity?: string; unit?: string }) =>
+    api.post('/api/v1/pantry', data),
+  update: (id: string, data: { name?: string; quantity?: string; unit?: string }) =>
+    api.patch(`/api/v1/pantry/${id}`, data),
+  delete: (id: string) => api.delete(`/api/v1/pantry/${id}`),
+};
+
+
+
 

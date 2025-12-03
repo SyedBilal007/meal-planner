@@ -274,3 +274,6 @@ export default function AIMealGenerator({ onMealAdded }: { onMealAdded?: () => v
   );
 }
 
+
+
+

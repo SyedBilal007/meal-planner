@@ -50,3 +50,6 @@ router.post('/generate-meals', authenticate, async (req, res) => {
 
 export default router;
 
+
+
+
