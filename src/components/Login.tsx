@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { User, Lock, Loader2 } from 'lucide-react';
 import { loginUser } from '../api/authClient';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -15,7 +15,7 @@ export default function Login() {
       navigate('/', { replace: true });
     }
   }, [isAuthenticated, navigate]);
-  const [email, setEmail] = useState('');
+  const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,8 +27,9 @@ export default function Login() {
 
     try {
       // Build payload matching LoginPayload type
+      // Backend accepts username OR email in the username field
       const payload = {
-        email: email.trim(),
+        username: usernameOrEmail.trim(),
         password: password,
       };
 
@@ -62,22 +63,22 @@ export default function Login() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email
+            <label htmlFor="usernameOrEmail" className="block text-sm font-medium text-gray-700 mb-2">
+              Username or Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
-                id="email"
-                type="email"
-                value={email}
+                id="usernameOrEmail"
+                type="text"
+                value={usernameOrEmail}
                 onChange={(e) => {
-                  setEmail(e.target.value);
+                  setUsernameOrEmail(e.target.value);
                   setError('');
                 }}
                 required
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                placeholder="you@example.com"
+                placeholder="username or you@example.com"
                 disabled={loading}
               />
             </div>
@@ -119,6 +120,13 @@ export default function Login() {
               'Sign In'
             )}
           </button>
+
+          <p className="text-center text-sm text-gray-600 mt-4">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-indigo-600 hover:text-indigo-700 font-medium">
+              Sign up
+            </Link>
+          </p>
         </form>
       </div>
     </div>

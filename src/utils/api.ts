@@ -98,3 +98,6 @@ export const pantryAPI = {
     api.patch(`/api/v1/pantry/${id}`, data),
   delete: (id: string) => api.delete(`/api/v1/pantry/${id}`),
 };
+
+
+

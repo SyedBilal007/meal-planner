@@ -50,3 +50,6 @@ export const leaveHousehold = (householdId: string) => {
     socket.emit('leave-household', householdId);
   }
 };
+
+
+

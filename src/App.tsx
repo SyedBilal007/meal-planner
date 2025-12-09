@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { HouseholdProvider } from './contexts/HouseholdContext';
 import Login from './components/Login';
+import Register from './components/Register';
 import ProtectedRoute from './components/ProtectedRoute';
 import MealPlanner from './components/MealPlanner';
 import Pantry from './components/Pantry';
@@ -13,6 +14,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route
         path="/"
         element={

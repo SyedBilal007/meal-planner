@@ -3,22 +3,25 @@ import axios from 'axios';
 const API_BASE = "https://mealsync.up.railway.app";
 
 /**
- * Register payload matching the backend schema
- * Based on server/src/routes/auth.ts registerSchema
+ * Register payload matching the backend API schema
+ * POST /api/v1/auth/register
  */
 export type RegisterPayload = {
   email: string;
+  username: string;
+  full_name: string;
+  dietary_preferences?: string;
+  allergies?: string;
   password: string;
-  name?: string;
-  dietaryPreferences?: string;
 };
 
 /**
- * Login payload matching the backend schema
- * Based on server/src/routes/auth.ts loginSchema
+ * Login payload matching the backend API schema
+ * POST /api/v1/auth/login
+ * username can be either username OR email
  */
 export type LoginPayload = {
-  email: string;
+  username: string; // Can be username OR email
   password: string;
 };
 
@@ -54,16 +57,16 @@ type ErrorResponse = {
 /**
  * Register a new user
  * 
- * Endpoint: POST /api/auth/register
+ * Endpoint: POST /api/v1/auth/register
  * 
- * @param payload - Registration data (email, password, optional name and dietaryPreferences)
+ * @param payload - Registration data (email, username, full_name, password, optional dietary_preferences and allergies)
  * @returns Promise resolving to AuthResponse with user and token
  * @throws Error with message from backend if registration fails
  */
 export async function registerUser(payload: RegisterPayload): Promise<AuthResponse> {
   try {
     const response = await axios.post<AuthResponse>(
-      `${API_BASE}/api/auth/register`,
+      `${API_BASE}/api/v1/auth/register`,
       payload,
       {
         headers: {
@@ -86,16 +89,16 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthRespon
 /**
  * Login an existing user
  * 
- * Endpoint: POST /api/auth/login
+ * Endpoint: POST /api/v1/auth/login
  * 
- * @param payload - Login credentials (email and password)
+ * @param payload - Login credentials (username can be username OR email, and password)
  * @returns Promise resolving to AuthResponse with user and token
  * @throws Error with message from backend if login fails
  */
 export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
   try {
     const response = await axios.post<AuthResponse>(
-      `${API_BASE}/api/auth/login`,
+      `${API_BASE}/api/v1/auth/login`,
       payload,
       {
         headers: {
@@ -114,4 +117,6 @@ export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
     throw new Error(error.message || 'Failed to login');
   }
 }
+
+
 
