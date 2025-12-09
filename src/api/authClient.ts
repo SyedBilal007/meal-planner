@@ -9,7 +9,7 @@ const API_BASE = "https://mealsync.up.railway.app";
 export type RegisterPayload = {
   email: string;
   username: string;
-  full_name: string;
+  full_name?: string;
   dietary_preferences?: string;
   allergies?: string;
   password: string;
@@ -18,40 +18,46 @@ export type RegisterPayload = {
 /**
  * Login payload matching the backend API schema
  * POST /api/v1/auth/login
- * username can be either username OR email
+ * identifier can be either username OR email
  */
 export type LoginPayload = {
-  username: string; // Can be username OR email
+  identifier: string; // Can be username OR email
   password: string;
 };
 
 /**
- * User object returned from auth endpoints
- * Based on server/src/routes/auth.ts response structure
+ * Token data returned from login endpoint
+ */
+export type TokenData = {
+  access_token: string;
+  token_type: string;
+  refresh_token: string;
+};
+
+/**
+ * User object returned from /api/v1/auth/me
  */
 export type User = {
   id: string;
   email: string;
-  name: string | null;
-  dietaryPreferences: string | null;
-  createdAt?: string; // Only present in register response
+  username?: string;
+  full_name?: string;
+  name?: string;
+  dietaryPreferences?: string | null;
+  dietary_preferences?: string | null;
+  createdAt?: string;
 };
 
 /**
- * Auth response structure from backend
- * Based on server/src/routes/auth.ts response format
+ * Backend response structure
  */
-export type AuthResponse = {
-  user: User;
-  token: string;
-};
-
-/**
- * Error response structure from backend
- */
-type ErrorResponse = {
-  error: string;
-  details?: Array<{ path: string[]; message: string }>;
+type BackendResponse<T> = {
+  success: boolean;
+  error?: {
+    message?: string;
+    [key: string]: any;
+  };
+  data: T;
 };
 
 /**
@@ -60,29 +66,42 @@ type ErrorResponse = {
  * Endpoint: POST /api/v1/auth/register
  * 
  * @param payload - Registration data (email, username, full_name, password, optional dietary_preferences and allergies)
- * @returns Promise resolving to AuthResponse with user and token
+ * @returns Promise resolving to user data
  * @throws Error with message from backend if registration fails
  */
-export async function registerUser(payload: RegisterPayload): Promise<AuthResponse> {
+export async function registerUser(payload: RegisterPayload) {
   try {
-    const response = await axios.post<AuthResponse>(
+    const response = await axios.post<BackendResponse<any>>(
       `${API_BASE}/api/v1/auth/register`,
       payload,
       {
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
       }
     );
-    return response.data;
-  } catch (error: any) {
-    // Handle 4xx errors with JSON error messages
-    if (error.response?.status >= 400 && error.response?.status < 500) {
-      const errorData: ErrorResponse = error.response.data;
-      throw new Error(errorData.error || 'Registration failed');
+
+    if (!response.data?.success) {
+      throw new Error(response.data?.error?.message || 'Registration failed');
     }
-    // Handle network errors or other issues
-    throw new Error(error.message || 'Failed to register user');
+
+    return response.data.data;
+  } catch (error: any) {
+    console.error('Auth registration error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+
+    const apiMessage =
+      error.response?.data?.detail ||
+      error.response?.data?.error?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      'Registration failed';
+
+    throw new Error(apiMessage);
   }
 }
 
@@ -90,31 +109,97 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthRespon
  * Login an existing user
  * 
  * Endpoint: POST /api/v1/auth/login
+ * Content-Type: application/x-www-form-urlencoded
  * 
- * @param payload - Login credentials (username can be username OR email, and password)
- * @returns Promise resolving to AuthResponse with user and token
+ * @param payload - Login credentials (identifier can be username OR email, and password)
+ * @returns Promise resolving to TokenData with access_token, token_type, and refresh_token
  * @throws Error with message from backend if login fails
  */
-export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
+export async function loginUser(payload: LoginPayload): Promise<TokenData> {
   try {
-    const response = await axios.post<AuthResponse>(
+    // Build form data for application/x-www-form-urlencoded
+    const params = new URLSearchParams();
+    params.append('username', payload.identifier); // Backend expects 'username' field
+    params.append('password', payload.password);
+    params.append('grant_type', 'password');
+
+    const response = await axios.post<BackendResponse<TokenData>>(
       `${API_BASE}/api/v1/auth/login`,
-      payload,
+      params,
       {
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
         },
       }
     );
-    return response.data;
-  } catch (error: any) {
-    // Handle 4xx errors with JSON error messages
-    if (error.response?.status >= 400 && error.response?.status < 500) {
-      const errorData: ErrorResponse = error.response.data;
-      throw new Error(errorData.error || 'Login failed');
+
+    // Backend wraps token in { success, error, data }
+    if (!response.data?.success) {
+      throw new Error(response.data?.error?.message || 'Login failed');
     }
-    // Handle network errors or other issues
-    throw new Error(error.message || 'Failed to login');
+
+    return response.data.data as TokenData;
+  } catch (error: any) {
+    console.error('Auth login error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+
+    const apiMessage =
+      error.response?.data?.detail ||
+      error.response?.data?.error?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      'Login failed';
+
+    throw new Error(apiMessage);
+  }
+}
+
+/**
+ * Get current user information
+ * 
+ * Endpoint: GET /api/v1/auth/me
+ * Requires: Authorization: Bearer <access_token>
+ * 
+ * @param accessToken - JWT access token
+ * @returns Promise resolving to User object
+ * @throws Error if token is invalid or user not found
+ */
+export async function getCurrentUser(accessToken: string): Promise<User> {
+  try {
+    const response = await axios.get<BackendResponse<User>>(
+      `${API_BASE}/api/v1/auth/me`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    if (!response.data?.success) {
+      throw new Error(response.data?.error?.message || 'Failed to get user');
+    }
+
+    return response.data.data;
+  } catch (error: any) {
+    console.error('Get user error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+
+    const apiMessage =
+      error.response?.data?.detail ||
+      error.response?.data?.error?.message ||
+      error.response?.data?.error ||
+      error.message ||
+      'Failed to get user';
+
+    throw new Error(apiMessage);
   }
 }
 

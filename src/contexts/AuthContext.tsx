@@ -18,11 +18,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Load auth state from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem('mealsync_token');
+    const storedAccessToken = localStorage.getItem('mealsync_access_token');
     const storedUser = localStorage.getItem('mealsync_user');
     
-    if (storedToken && storedUser) {
-      setToken(storedToken);
+    if (storedAccessToken && storedUser) {
+      setToken(storedAccessToken);
       setUser(JSON.parse(storedUser));
     }
   }, []);
@@ -30,15 +30,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const setAuth = (userData: User, tokenData: string) => {
     setUser(userData);
     setToken(tokenData);
-    localStorage.setItem('mealsync_token', tokenData);
+    // Store access token (refresh token is already stored separately in Login component)
+    localStorage.setItem('mealsync_access_token', tokenData);
     localStorage.setItem('mealsync_user', JSON.stringify(userData));
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('mealsync_token');
+    localStorage.removeItem('mealsync_access_token');
+    localStorage.removeItem('mealsync_refresh_token');
+    localStorage.removeItem('mealsync_token_type');
     localStorage.removeItem('mealsync_user');
+    // Also remove old token key for backward compatibility
+    localStorage.removeItem('mealsync_token');
   };
 
   return (

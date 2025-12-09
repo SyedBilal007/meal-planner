@@ -10,6 +10,20 @@ export const api = axios.create({
   },
 });
 
+// Add request interceptor to attach access token
+api.interceptors.request.use(
+  (config) => {
+    const accessToken = localStorage.getItem('mealsync_access_token');
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Household API
 export const householdAPI = {
   create: (data: { name: string }) => api.post('/households', data),

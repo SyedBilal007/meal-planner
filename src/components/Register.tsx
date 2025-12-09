@@ -44,11 +44,42 @@ export default function Register() {
       // Call registerUser from auth client
       const response = await registerUser(payload);
 
-      // Save token and user data
-      setAuth(response.user, response.token);
-
-      // Redirect to main app page
-      navigate('/');
+      // Handle registration response
+      // If response contains tokens, use them; otherwise redirect to login
+      if (response?.access_token) {
+        // Registration returned tokens directly
+        localStorage.setItem('mealsync_access_token', response.access_token);
+        if (response.refresh_token) {
+          localStorage.setItem('mealsync_refresh_token', response.refresh_token);
+        }
+        if (response.token_type) {
+          localStorage.setItem('mealsync_token_type', response.token_type);
+        }
+        
+        // Try to get user data
+        const { getCurrentUser } = await import('../api/authClient');
+        try {
+          const user = await getCurrentUser(response.access_token);
+          setAuth(user, response.access_token);
+        } catch (userError) {
+          // If /me fails, create minimal user from registration data
+          const minimalUser = {
+            id: response.id || '',
+            email: email.trim(),
+            username: username.trim(),
+            full_name: fullName.trim() || undefined,
+          };
+          setAuth(minimalUser, response.access_token);
+        }
+        navigate('/');
+      } else if (response?.user && response?.token) {
+        // Legacy response format
+        setAuth(response.user, response.token);
+        navigate('/');
+      } else {
+        // No tokens returned, redirect to login
+        navigate('/login');
+      }
     } catch (err: any) {
       // Show error message from backend
       setError(err.message || 'Failed to register. Please try again.');

@@ -15,7 +15,7 @@ export default function Login() {
       navigate('/', { replace: true });
     }
   }, [isAuthenticated, navigate]);
-  const [usernameOrEmail, setUsernameOrEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,17 +27,37 @@ export default function Login() {
 
     try {
       // Build payload matching LoginPayload type
-      // Backend accepts username OR email in the username field
+      // identifier can be username OR email
       const payload = {
-        username: usernameOrEmail.trim(),
+        identifier: identifier.trim(),
         password: password,
       };
 
       // Call loginUser from auth client
-      const response = await loginUser(payload);
+      const tokenData = await loginUser(payload);
 
-      // Save token and user data
-      setAuth(response.user, response.token);
+      // Store tokens in localStorage
+      localStorage.setItem('mealsync_access_token', tokenData.access_token);
+      localStorage.setItem('mealsync_refresh_token', tokenData.refresh_token);
+      localStorage.setItem('mealsync_token_type', tokenData.token_type);
+
+      // Optionally fetch user data and update auth context
+      // For now, we'll set a minimal user object and the token
+      // The AuthContext will handle storing this
+      const { getCurrentUser } = await import('../api/authClient');
+      try {
+        const user = await getCurrentUser(tokenData.access_token);
+        setAuth(user, tokenData.access_token);
+      } catch (userError) {
+        // If /me fails, still proceed with login using token
+        // Create a minimal user object
+        const minimalUser = {
+          id: '',
+          email: identifier.includes('@') ? identifier : '',
+          username: identifier.includes('@') ? '' : identifier,
+        };
+        setAuth(minimalUser, tokenData.access_token);
+      }
 
       // Redirect to main app page
       navigate('/');
@@ -63,17 +83,17 @@ export default function Login() {
           )}
 
           <div>
-            <label htmlFor="usernameOrEmail" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="identifier" className="block text-sm font-medium text-gray-700 mb-2">
               Username or Email
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
-                id="usernameOrEmail"
+                id="identifier"
                 type="text"
-                value={usernameOrEmail}
+                value={identifier}
                 onChange={(e) => {
-                  setUsernameOrEmail(e.target.value);
+                  setIdentifier(e.target.value);
                   setError('');
                 }}
                 required
