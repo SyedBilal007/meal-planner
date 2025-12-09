@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Edit2, X, Save, BookOpen, AlertCircle, Loader2, Search, Star, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Save, BookOpen, AlertCircle, Loader2, Search, Star, ExternalLink, LogOut } from 'lucide-react';
 import { USE_MOCK_DATA } from '../config/dataSource';
 import {
   mockGetRecipes,
@@ -12,6 +12,8 @@ import {
   type RecipeIngredient,
 } from '../mocks/recipes';
 import { recipeAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface RecipeFormData {
   title: string;
@@ -23,6 +25,8 @@ interface RecipeFormData {
 }
 
 export default function RecipeLibrary() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -341,15 +345,29 @@ export default function RecipeLibrary() {
               <BookOpen className="w-8 h-8 text-indigo-600" />
               <h1 className="text-4xl font-bold text-gray-900">Recipe Library</h1>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-            >
-              <Plus className="w-5 h-5" />
-              Add Recipe
-            </motion.button>
+            <div className="flex items-center gap-3">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowAddForm(true)}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              >
+                <Plus className="w-5 h-5" />
+                Add Recipe
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              >
+                <LogOut className="w-5 h-5" />
+                Logout
+              </motion.button>
+            </div>
           </div>
 
           {/* Search Bar */}

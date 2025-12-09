@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, Save, Edit2, Clock, User, BookOpen, X, MessageSquare, ChefHat } from 'lucide-react';
+import { Plus, Trash2, Calendar, Copy, Download, ShoppingCart, ChevronDown, ChevronRight, Save, Edit2, Clock, User, BookOpen, X, MessageSquare, ChefHat, LogOut } from 'lucide-react';
 import { USE_MOCK_DATA } from '../config/dataSource';
 import type { WeekPlan, GroceryItem, CategorizedGroceryList } from '../utils/groceryList';
 import { downloadText, groceryCategories } from '../utils/groceryList';
@@ -27,6 +27,8 @@ import { mockGetRecipes, type Recipe } from '../mocks/recipes';
 import { getDayOfWeek } from '../utils/mealHelpers';
 import { mealAPI } from '../utils/api';
 import { useHousehold } from '../contexts/HouseholdContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const days: (keyof WeekPlan)[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const dayNames = {
@@ -41,6 +43,8 @@ const dayNames = {
 
 export default function MealPlanner() {
   const { currentHousehold } = useHousehold();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [selectedDay, setSelectedDay] = useState<keyof WeekPlan>('Mon');
   const [weekPlan, setWeekPlan] = useState<WeekPlan>({
     Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: []
@@ -613,13 +617,27 @@ export default function MealPlanner() {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-8"
+          className="mb-8"
         >
-          <div className="flex justify-center items-center gap-3 mb-4">
-            <Calendar className="w-8 h-8 text-indigo-600" />
-            <h1 className="text-4xl font-bold text-gray-900">MealSync</h1>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-8 h-8 text-indigo-600" />
+              <h1 className="text-4xl font-bold text-gray-900">MealSync</h1>
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+              <LogOut className="w-5 h-5" />
+              Logout
+            </motion.button>
           </div>
-          <p className="text-lg text-gray-600 mb-4">
+          <p className="text-lg text-gray-600 text-center">
             Collaborative meal planning
           </p>
         </motion.div>

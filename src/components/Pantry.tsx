@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Edit2, X, Save, Package, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Save, Package, AlertCircle, Loader2, LogOut } from 'lucide-react';
 import { USE_MOCK_DATA } from '../config/dataSource';
 import {
   mockGetPantry,
@@ -10,6 +10,8 @@ import {
   type PantryItem,
 } from '../mocks/pantry';
 import { pantryAPI } from '../utils/api';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface PantryFormData {
   name: string;
@@ -20,6 +22,8 @@ interface PantryFormData {
 const commonUnits = ['pcs', 'kg', 'g', 'ml', 'l', 'cups', 'tbsp', 'tsp', 'oz', 'lb'];
 
 export default function Pantry() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<PantryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -213,18 +217,32 @@ export default function Pantry() {
               <Package className="w-8 h-8 text-indigo-600" />
               <h1 className="text-4xl font-bold text-gray-900">My Pantry</h1>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                setShowAddForm(!showAddForm);
-                setError('');
-              }}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-            >
-              <Plus className="w-5 h-5" />
-              {showAddForm ? 'Cancel' : 'Add Ingredient'}
-            </motion.button>
+            <div className="flex items-center gap-3">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  setShowAddForm(!showAddForm);
+                  setError('');
+                }}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              >
+                <Plus className="w-5 h-5" />
+                {showAddForm ? 'Cancel' : 'Add Ingredient'}
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  logout();
+                  navigate('/login');
+                }}
+                className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              >
+                <LogOut className="w-5 h-5" />
+                Logout
+              </motion.button>
+            </div>
           </div>
           <p className="text-lg text-gray-600">
             Manage your pantry ingredients and track what you have available
