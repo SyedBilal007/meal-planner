@@ -57,17 +57,23 @@ export default function Register() {
         }
         
         // Try to get user data
-        const { getCurrentUser } = await import('../api/authClient');
+        const { getCurrentUser } = await import('../api/userClient');
         try {
-          const user = await getCurrentUser(response.access_token);
+          const user = await getCurrentUser();
           setAuth(user, response.access_token);
         } catch (userError) {
           // If /me fails, create minimal user from registration data
           const minimalUser = {
-            id: response.id || '',
+            id: 0,
+            uuid: '',
             email: email.trim(),
-            username: username.trim(),
-            full_name: fullName.trim() || undefined,
+            username: username.trim() || null,
+            full_name: fullName.trim() || null,
+            dietary_preferences: null,
+            allergies: null,
+            is_active: true,
+            is_verified: false,
+            created_at: new Date().toISOString(),
           };
           setAuth(minimalUser, response.access_token);
         }

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { User } from './userClient';
 
 const API_BASE = "https://mealsync.up.railway.app";
 
@@ -34,19 +35,8 @@ export type TokenData = {
   refresh_token: string;
 };
 
-/**
- * User object returned from /api/v1/auth/me
- */
-export type User = {
-  id: string;
-  email: string;
-  username?: string;
-  full_name?: string;
-  name?: string;
-  dietaryPreferences?: string | null;
-  dietary_preferences?: string | null;
-  createdAt?: string;
-};
+// User type is now imported from userClient.ts
+export type { User } from './userClient';
 
 /**
  * Backend response structure

@@ -27,6 +27,79 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [activeHouseholdId, setActiveHouseholdId] = useState<number | null>(null);
   const hasLoadedRef = useRef(false);
 
+  const setAuth = (userData: User, tokenData: string) => {
+    setUser(userData);
+    setToken(tokenData);
+    // Store access token (refresh token is already stored separately in Login component)
+    localStorage.setItem('mealsync_access_token', tokenData);
+    localStorage.setItem('mealsync_user', JSON.stringify(userData));
+  };
+
+  const logout = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    setHouseholds([]);
+    setActiveHouseholdId(null);
+    localStorage.removeItem('mealsync_access_token');
+    localStorage.removeItem('mealsync_refresh_token');
+    localStorage.removeItem('mealsync_token_type');
+    localStorage.removeItem('mealsync_user');
+    localStorage.removeItem('mealsync_active_household_id');
+    // Also remove old token key for backward compatibility
+    localStorage.removeItem('mealsync_token');
+  }, []);
+
+  const refreshHouseholds = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      const householdsData = await getMyHouseholds();
+      setHouseholds(householdsData);
+
+      // If no active household is set and we have households, set the first one
+      const currentActiveId = activeHouseholdId ?? Number(localStorage.getItem('mealsync_active_household_id'));
+      if (currentActiveId === null && householdsData.length > 0) {
+        const firstHouseholdId = householdsData[0].id;
+        setActiveHouseholdId(firstHouseholdId);
+        localStorage.setItem('mealsync_active_household_id', String(firstHouseholdId));
+      }
+    } catch (error) {
+      console.error('Failed to refresh households:', error);
+      // Don't throw - allow the app to continue
+    }
+  }, [token, activeHouseholdId]);
+
+  const loadUserAndHouseholds = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      // Load current user
+      const userData = await getCurrentUser();
+      setUser(userData);
+      localStorage.setItem('mealsync_user', JSON.stringify(userData));
+
+      // Load households
+      const householdsData = await getMyHouseholds();
+      setHouseholds(householdsData);
+
+      // If no active household is set and we have households, set the first one
+      const currentActiveId = activeHouseholdId ?? Number(localStorage.getItem('mealsync_active_household_id'));
+      if (currentActiveId === null && householdsData.length > 0) {
+        const firstHouseholdId = householdsData[0].id;
+        setActiveHouseholdId(firstHouseholdId);
+        localStorage.setItem('mealsync_active_household_id', String(firstHouseholdId));
+      }
+    } catch (error) {
+      console.error('Failed to load user and households:', error);
+      throw error; // Re-throw so caller can handle it
+    }
+  }, [token, activeHouseholdId]);
+
+  const setActiveHousehold = useCallback((id: number) => {
+    setActiveHouseholdId(id);
+    localStorage.setItem('mealsync_active_household_id', String(id));
+  }, []);
+
   // Load auth state from localStorage on mount
   useEffect(() => {
     const storedAccessToken = localStorage.getItem('mealsync_access_token');
@@ -76,79 +149,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener('auth:unauthorized', handleUnauthorized);
     };
   }, [logout]);
-
-  const setAuth = (userData: User, tokenData: string) => {
-    setUser(userData);
-    setToken(tokenData);
-    // Store access token (refresh token is already stored separately in Login component)
-    localStorage.setItem('mealsync_access_token', tokenData);
-    localStorage.setItem('mealsync_user', JSON.stringify(userData));
-  };
-
-  const refreshHouseholds = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      const householdsData = await getMyHouseholds();
-      setHouseholds(householdsData);
-
-      // If no active household is set and we have households, set the first one
-      const currentActiveId = activeHouseholdId ?? Number(localStorage.getItem('mealsync_active_household_id'));
-      if (currentActiveId === null && householdsData.length > 0) {
-        const firstHouseholdId = householdsData[0].id;
-        setActiveHouseholdId(firstHouseholdId);
-        localStorage.setItem('mealsync_active_household_id', String(firstHouseholdId));
-      }
-    } catch (error) {
-      console.error('Failed to refresh households:', error);
-      // Don't throw - allow the app to continue
-    }
-  }, [token]);
-
-  const loadUserAndHouseholds = useCallback(async () => {
-    if (!token) return;
-
-    try {
-      // Load current user
-      const userData = await getCurrentUser();
-      setUser(userData);
-      localStorage.setItem('mealsync_user', JSON.stringify(userData));
-
-      // Load households
-      const householdsData = await getMyHouseholds();
-      setHouseholds(householdsData);
-
-      // If no active household is set and we have households, set the first one
-      const currentActiveId = activeHouseholdId ?? Number(localStorage.getItem('mealsync_active_household_id'));
-      if (currentActiveId === null && householdsData.length > 0) {
-        const firstHouseholdId = householdsData[0].id;
-        setActiveHouseholdId(firstHouseholdId);
-        localStorage.setItem('mealsync_active_household_id', String(firstHouseholdId));
-      }
-    } catch (error) {
-      console.error('Failed to load user and households:', error);
-      throw error; // Re-throw so caller can handle it
-    }
-  }, [token, activeHouseholdId]);
-
-  const setActiveHousehold = useCallback((id: number) => {
-    setActiveHouseholdId(id);
-    localStorage.setItem('mealsync_active_household_id', String(id));
-  }, []);
-
-  const logout = useCallback(() => {
-    setUser(null);
-    setToken(null);
-    setHouseholds([]);
-    setActiveHouseholdId(null);
-    localStorage.removeItem('mealsync_access_token');
-    localStorage.removeItem('mealsync_refresh_token');
-    localStorage.removeItem('mealsync_token_type');
-    localStorage.removeItem('mealsync_user');
-    localStorage.removeItem('mealsync_active_household_id');
-    // Also remove old token key for backward compatibility
-    localStorage.removeItem('mealsync_token');
-  }, []);
 
   return (
     <AuthContext.Provider

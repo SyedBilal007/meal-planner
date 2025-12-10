@@ -31,6 +31,7 @@ export type RecipeIngredient = {
   notes?: string;
   is_optional?: boolean;
   order?: number;
+  name?: string; // optional, for UI display of ingredient name
 };
 
 /**

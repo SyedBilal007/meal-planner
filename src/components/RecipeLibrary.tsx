@@ -19,7 +19,6 @@ import {
   updateRecipe,
   deleteRecipe,
   searchRecipes,
-  getRecipeById,
   type Recipe,
   type RecipeIngredient,
   type RecipeCreate,

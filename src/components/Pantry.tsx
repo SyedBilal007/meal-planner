@@ -7,7 +7,6 @@ import {
   mockAddPantryItem,
   mockUpdatePantryItem,
   mockDeletePantryItem,
-  type PantryItem,
 } from '../mocks/pantry';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -19,6 +18,7 @@ import {
   searchIngredients,
   type Ingredient,
   type IngredientCategory,
+  type UnitOfMeasurement,
   mapUnitToEnum,
 } from '../api/ingredientClient';
 
@@ -283,7 +283,7 @@ export default function Pantry() {
           category?: IngredientCategory;
           description?: string;
           average_price?: number;
-          price_unit?: string;
+          price_unit?: UnitOfMeasurement;
         } = {};
 
         if (editFormData.name.trim()) {
