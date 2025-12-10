@@ -7,13 +7,14 @@ export default function ProfilePage() {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(!user);
+  const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
 
-  const [fullName, setFullName] = useState('');
-  const [dietaryPreferences, setDietaryPreferences] = useState('');
-  const [allergies, setAllergies] = useState('');
+  const [fullName, setFullName] = useState(user?.full_name ?? '');
+  const [dietaryPreferences, setDietaryPreferences] = useState(user?.dietary_preferences ?? '');
+  const [allergies, setAllergies] = useState(user?.allergies ?? '');
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -26,6 +27,12 @@ export default function ProfilePage() {
     let isMounted = true;
 
     const loadProfile = async () => {
+      if (user) {
+        setSyncing(true);
+      } else {
+        setLoadingProfile(true);
+      }
+
       try {
         setError(null);
         const me = await getMe();
@@ -43,21 +50,22 @@ export default function ProfilePage() {
         if (status === 401) {
           setError('Your session has expired. Please log in again.');
         } else {
-          setError('Failed to load profile. Please try again.');
+          setError('Failed to refresh profile. Showing last known data.');
         }
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (!isMounted) return;
+        setLoadingProfile(false);
+        setSyncing(false);
       }
     };
 
+    // Always try to refresh once when the component mounts
     loadProfile();
 
     return () => {
       isMounted = false;
     };
-  }, [updateUser]);
+  }, [user, updateUser]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +117,7 @@ export default function ProfilePage() {
     navigate('/login', { replace: true });
   };
 
-  if (loading) {
+  if (!user && loadingProfile) {
     return (
       <div className="p-4">
         <p>Loading profile...</p>
@@ -117,24 +125,18 @@ export default function ProfilePage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="p-4 space-y-2">
-        <p className="text-red-600 text-sm">{error}</p>
-        <button
-          className="px-3 py-1 text-sm border rounded"
-          onClick={() => {
-            navigate('/login', { replace: true });
-          }}
-        >
-          Go to login
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
+      {error && (
+        <div className="text-sm text-red-600 border border-red-200 bg-red-50 rounded-md px-3 py-2">
+          {error}
+        </div>
+      )}
+
+      {syncing && !error && (
+        <p className="text-xs text-gray-500">Syncing latest profile data…</p>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-500">Profile</p>
