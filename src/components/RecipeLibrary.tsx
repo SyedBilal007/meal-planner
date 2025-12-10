@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Edit2, X, Save, BookOpen, AlertCircle, Loader2, Search, Star, ExternalLink, LogOut } from 'lucide-react';
 import { USE_MOCK_DATA } from '../config/dataSource';
@@ -8,12 +8,27 @@ import {
   mockUpdateRecipe,
   mockDeleteRecipe,
   mockSearchRecipes,
-  type Recipe,
-  type RecipeIngredient,
+  type Recipe as MockRecipe,
+  type RecipeIngredient as MockRecipeIngredient,
 } from '../mocks/recipes';
-import { recipeAPI } from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import {
+  getHouseholdRecipes,
+  createRecipe,
+  updateRecipe,
+  deleteRecipe,
+  searchRecipes,
+  getRecipeById,
+  type Recipe,
+  type RecipeIngredient,
+  type RecipeCreate,
+  type RecipeUpdate,
+  type DifficultyLevel,
+  type CuisineType,
+} from '../api/recipeClient';
+import { getHouseholdIngredients } from '../api/ingredientClient';
+import { mapUnitToEnum } from '../api/ingredientClient';
 
 interface RecipeFormData {
   title: string;
@@ -21,13 +36,61 @@ interface RecipeFormData {
   cuisineType: string;
   instructions: string;
   rating: string;
-  ingredients: RecipeIngredient[];
+  ingredients: MockRecipeIngredient[];
+}
+
+// Helper to map UI Recipe to backend Recipe
+function mapToBackendRecipe(uiRecipe: MockRecipe, householdId: number, ingredientNameToId: Map<string, number>): RecipeCreate {
+  return {
+    name: uiRecipe.title,
+    description: uiRecipe.description || undefined,
+    instructions: uiRecipe.instructions || '',
+    prep_time_minutes: 0,
+    cook_time_minutes: 0,
+    servings: 1,
+    difficulty: 'easy' as DifficultyLevel,
+    cuisine_type: (uiRecipe.cuisineType?.toLowerCase() || 'other') as CuisineType,
+    tags: undefined,
+    calories_per_serving: undefined,
+    source_url: undefined,
+    image_url: undefined,
+    is_public: false,
+    household_id: householdId,
+    ingredients: uiRecipe.ingredients.map((ing, index) => {
+      const ingredientId = ingredientNameToId.get(ing.name.toLowerCase()) || 0;
+      return {
+        ingredient_id: ingredientId,
+        quantity: ing.quantity || 1,
+        unit: mapUnitToEnum(ing.unit || 'piece'),
+        notes: undefined,
+        is_optional: false,
+        order: index,
+      };
+    }),
+  };
+}
+
+// Helper to map backend Recipe to UI Recipe
+function mapToUIRecipe(backendRecipe: Recipe, ingredientIdToName?: Map<number, string>): MockRecipe {
+  return {
+    id: backendRecipe.id,
+    title: backendRecipe.name,
+    description: backendRecipe.description || undefined,
+    instructions: backendRecipe.instructions || '',
+    cuisineType: backendRecipe.cuisine_type,
+    rating: undefined, // Backend doesn't have rating
+    ingredients: backendRecipe.ingredients.map(ing => ({
+      name: ingredientIdToName?.get(ing.ingredient_id) || `Ingredient ${ing.ingredient_id}`,
+      quantity: ing.quantity,
+      unit: ing.unit,
+    })),
+  };
 }
 
 export default function RecipeLibrary() {
-  const { logout } = useAuth();
+  const { logout, activeHouseholdId } = useAuth();
   const navigate = useNavigate();
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [recipes, setRecipes] = useState<MockRecipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -43,57 +106,113 @@ export default function RecipeLibrary() {
     rating: '',
     ingredients: [{ name: '', quantity: 0, unit: '' }],
   });
+  const [ingredientNameToId, setIngredientNameToId] = useState<Map<string, number>>(new Map());
+  const [ingredientIdToName, setIngredientIdToName] = useState<Map<number, string>>(new Map());
 
+  // Load pantry ingredients to map names to IDs
   useEffect(() => {
-    fetchRecipes();
-  }, []);
+    if (!activeHouseholdId || USE_MOCK_DATA) return;
 
+    getHouseholdIngredients(activeHouseholdId, { limit: 1000 })
+      .then((ingredients) => {
+        const nameToId = new Map<string, number>();
+        const idToName = new Map<number, string>();
+        ingredients.forEach((ing) => {
+          nameToId.set(ing.name.toLowerCase(), ing.id);
+          idToName.set(ing.id, ing.name);
+        });
+        setIngredientNameToId(nameToId);
+        setIngredientIdToName(idToName);
+      })
+      .catch((err) => {
+        console.error('Failed to load ingredients for mapping:', err);
+      });
+  }, [activeHouseholdId]);
+
+  // Fetch recipes when activeHouseholdId changes
   useEffect(() => {
-    if (searchQuery.trim()) {
-      handleSearch(searchQuery);
-    } else {
-      fetchRecipes();
+    if (!activeHouseholdId && !USE_MOCK_DATA) {
+      setRecipes([]);
+      setLoading(false);
+      return;
     }
-  }, [searchQuery]);
+
+    if (USE_MOCK_DATA) {
+      fetchRecipes();
+    } else {
+      fetchHouseholdRecipes();
+    }
+  }, [activeHouseholdId]);
+
+  // Search recipes when search query changes
+  useEffect(() => {
+    if (!activeHouseholdId || USE_MOCK_DATA) return;
+
+    const timeoutId = setTimeout(() => {
+      if (searchQuery.trim()) {
+        handleSearch(searchQuery);
+      } else {
+        fetchHouseholdRecipes();
+      }
+    }, 300); // Debounce search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, activeHouseholdId]);
 
   const fetchRecipes = async () => {
     setLoading(true);
     setError('');
     try {
-      const data = USE_MOCK_DATA
-        ? await mockGetRecipes()
-        : (await recipeAPI.getAll()).data;
+      const data = await mockGetRecipes();
       setRecipes(data);
     } catch (err: any) {
       console.error('Failed to fetch recipes:', err);
-      setError(
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Could not load recipes. Please try again.'
-      );
+      setError('Could not load recipes. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchHouseholdRecipes = useCallback(async () => {
+    if (!activeHouseholdId) return;
+
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getHouseholdRecipes(activeHouseholdId, { limit: 100 });
+      // Map backend recipes to UI format
+      const uiRecipes = data.map(r => mapToUIRecipe(r, ingredientIdToName));
+      setRecipes(uiRecipes);
+    } catch (err: any) {
+      console.error('Failed to fetch recipes:', err);
+      setError(err.message || 'Could not load recipes. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeHouseholdId, ingredientIdToName]);
+
   const handleSearch = async (query: string) => {
-    if (!query.trim()) {
-      fetchRecipes();
+    if (!query.trim() || !activeHouseholdId) {
+      fetchHouseholdRecipes();
       return;
     }
 
     setLoading(true);
     try {
-      const results = USE_MOCK_DATA
-        ? await mockSearchRecipes(query)
-        : recipes.filter(r => 
-            r.title.toLowerCase().includes(query.toLowerCase()) ||
-            r.description?.toLowerCase().includes(query.toLowerCase())
-          );
-      setRecipes(results);
+      if (USE_MOCK_DATA) {
+        const results = await mockSearchRecipes(query);
+        setRecipes(results);
+      } else {
+        const results = await searchRecipes(activeHouseholdId, {
+          query: query.trim(),
+          limit: 100,
+        });
+        const uiRecipes = results.map(r => mapToUIRecipe(r, ingredientIdToName));
+        setRecipes(uiRecipes);
+      }
     } catch (err: any) {
       console.error('Failed to search recipes:', err);
-      setError('Failed to search recipes');
+      setError(err.message || 'Failed to search recipes');
     } finally {
       setLoading(false);
     }
@@ -126,6 +245,11 @@ export default function RecipeLibrary() {
       return;
     }
 
+    if (!activeHouseholdId && !USE_MOCK_DATA) {
+      setError('Please select or create a household first');
+      return;
+    }
+
     setActionLoading('add');
     setError('');
 
@@ -134,28 +258,32 @@ export default function RecipeLibrary() {
         ing => ing.name.trim() && ing.quantity > 0
       );
 
-      const payload: Omit<Recipe, 'id'> = {
-        title: formData.title.trim(),
-        description: formData.description.trim() || undefined,
-        cuisineType: formData.cuisineType.trim() || undefined,
-        instructions: formData.instructions.trim() || undefined,
-        ingredients,
-        rating: formData.rating ? parseInt(formData.rating) : undefined,
-      };
+      if (USE_MOCK_DATA) {
+        const payload: Omit<MockRecipe, 'id'> = {
+          title: formData.title.trim(),
+          description: formData.description.trim() || undefined,
+          cuisineType: formData.cuisineType.trim() || undefined,
+          instructions: formData.instructions.trim() || undefined,
+          ingredients,
+          rating: formData.rating ? parseInt(formData.rating) : undefined,
+        };
+        const newRecipe = await mockCreateRecipe(payload);
+        setRecipes((prev) => [...prev, newRecipe]);
+      } else {
+        const uiRecipe: Omit<MockRecipe, 'id'> = {
+          title: formData.title.trim(),
+          description: formData.description.trim() || undefined,
+          cuisineType: formData.cuisineType.trim() || undefined,
+          instructions: formData.instructions.trim() || undefined,
+          ingredients,
+          rating: formData.rating ? parseInt(formData.rating) : undefined,
+        };
+        const backendPayload = mapToBackendRecipe(uiRecipe as MockRecipe, activeHouseholdId!, ingredientNameToId);
+        const created = await createRecipe(backendPayload);
+        const uiRecipeResult = mapToUIRecipe(created, ingredientIdToName);
+        setRecipes((prev) => [...prev, uiRecipeResult]);
+      }
 
-      const newRecipe = USE_MOCK_DATA
-        ? await mockCreateRecipe(payload)
-        : (await recipeAPI.create({
-            name: payload.title,
-            instructions: payload.instructions,
-            ingredients: payload.ingredients.map(ing => ({
-              name: ing.name,
-              quantity: String(ing.quantity),
-              unit: ing.unit,
-            })),
-          })).data;
-
-      setRecipes((prev) => [...prev, newRecipe]);
       setFormData({
         title: '',
         description: '',
@@ -168,17 +296,13 @@ export default function RecipeLibrary() {
       showToast('Recipe added successfully!');
     } catch (err: any) {
       console.error('Failed to add recipe:', err);
-      setError(
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Failed to add recipe. Please try again.'
-      );
+      setError(err.message || 'Failed to add recipe. Please try again.');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleEditClick = (recipe: Recipe) => {
+  const handleEditClick = (recipe: MockRecipe) => {
     setEditingId(recipe.id);
     setFormData({
       title: recipe.title,
@@ -199,6 +323,11 @@ export default function RecipeLibrary() {
       return;
     }
 
+    if (!activeHouseholdId && !USE_MOCK_DATA) {
+      setError('Please select or create a household first');
+      return;
+    }
+
     setActionLoading(editingId);
     setError('');
 
@@ -207,25 +336,63 @@ export default function RecipeLibrary() {
         ing => ing.name.trim() && ing.quantity > 0
       );
 
-      const updates: Partial<Omit<Recipe, 'id'>> = {
-        title: formData.title.trim(),
-        description: formData.description.trim() || undefined,
-        cuisineType: formData.cuisineType.trim() || undefined,
-        instructions: formData.instructions.trim() || undefined,
-        ingredients,
-        rating: formData.rating ? parseInt(formData.rating) : undefined,
-      };
-
-      const updatedRecipe = USE_MOCK_DATA
-        ? await mockUpdateRecipe(editingId, updates)
-        : (await recipeAPI.update(String(editingId), {
-            name: updates.title,
-            instructions: updates.instructions,
-          })).data;
-
-      if (updatedRecipe) {
+      if (USE_MOCK_DATA) {
+        const updates: Partial<Omit<MockRecipe, 'id'>> = {
+          title: formData.title.trim(),
+          description: formData.description.trim() || undefined,
+          cuisineType: formData.cuisineType.trim() || undefined,
+          instructions: formData.instructions.trim() || undefined,
+          ingredients,
+          rating: formData.rating ? parseInt(formData.rating) : undefined,
+        };
+        const updatedRecipe = await mockUpdateRecipe(editingId, updates);
+        if (updatedRecipe) {
+          setRecipes((prev) =>
+            prev.map((recipe) => (recipe.id === editingId ? updatedRecipe : recipe))
+          );
+          setEditingId(null);
+          setFormData({
+            title: '',
+            description: '',
+            cuisineType: '',
+            instructions: '',
+            rating: '',
+            ingredients: [{ name: '', quantity: 0, unit: '' }],
+          });
+          showToast('Recipe updated successfully!');
+        } else {
+          setError('Recipe not found');
+        }
+      } else {
+        const uiRecipe: Partial<MockRecipe> = {
+          title: formData.title.trim(),
+          description: formData.description.trim() || undefined,
+          cuisineType: formData.cuisineType.trim() || undefined,
+          instructions: formData.instructions.trim() || undefined,
+          ingredients,
+          rating: formData.rating ? parseInt(formData.rating) : undefined,
+        };
+        const backendPayload: RecipeUpdate = {
+          name: uiRecipe.title,
+          description: uiRecipe.description,
+          instructions: uiRecipe.instructions || '',
+          cuisine_type: (uiRecipe.cuisineType?.toLowerCase() || 'other') as CuisineType,
+          ingredients: uiRecipe.ingredients?.map((ing, index) => {
+            const ingredientId = ingredientNameToId.get(ing.name.toLowerCase()) || 0;
+            return {
+              ingredient_id: ingredientId,
+              quantity: ing.quantity || 1,
+              unit: mapUnitToEnum(ing.unit || 'piece'),
+              notes: undefined,
+              is_optional: false,
+              order: index,
+            };
+          }),
+        };
+        const updated = await updateRecipe(editingId, backendPayload);
+        const uiRecipeResult = mapToUIRecipe(updated, ingredientIdToName);
         setRecipes((prev) =>
-          prev.map((recipe) => (recipe.id === editingId ? updatedRecipe : recipe))
+          prev.map((recipe) => (recipe.id === editingId ? uiRecipeResult : recipe))
         );
         setEditingId(null);
         setFormData({
@@ -237,16 +404,10 @@ export default function RecipeLibrary() {
           ingredients: [{ name: '', quantity: 0, unit: '' }],
         });
         showToast('Recipe updated successfully!');
-      } else {
-        setError('Recipe not found');
       }
     } catch (err: any) {
       console.error('Failed to update recipe:', err);
-      setError(
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Failed to update recipe. Please try again.'
-      );
+      setError(err.message || 'Failed to update recipe. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -264,7 +425,7 @@ export default function RecipeLibrary() {
       if (USE_MOCK_DATA) {
         await mockDeleteRecipe(id);
       } else {
-        await recipeAPI.delete(String(id));
+        await deleteRecipe(id);
       }
       setRecipes((prev) => prev.filter((recipe) => recipe.id !== id));
       if (editingId === id) {
@@ -276,11 +437,7 @@ export default function RecipeLibrary() {
       showToast('Recipe deleted successfully!');
     } catch (err: any) {
       console.error('Failed to delete recipe:', err);
-      setError(
-        err.response?.data?.detail ||
-        err.response?.data?.message ||
-        'Failed to delete recipe. Please try again.'
-      );
+      setError(err.message || 'Failed to delete recipe. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -330,6 +487,25 @@ export default function RecipeLibrary() {
       </div>
     );
   };
+
+  // Show message if no household is selected
+  if (!activeHouseholdId && !USE_MOCK_DATA) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-8 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+            <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              No Household Selected
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Please select or create a household to view recipes.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 py-8 px-4">

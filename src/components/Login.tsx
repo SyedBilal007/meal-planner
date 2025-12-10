@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { setAuth, isAuthenticated } = useAuth();
+  const { setAuth, isAuthenticated, loadUserAndHouseholds } = useAuth();
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -41,22 +41,29 @@ export default function Login() {
       localStorage.setItem('mealsync_refresh_token', tokenData.refresh_token);
       localStorage.setItem('mealsync_token_type', tokenData.token_type);
 
-      // Optionally fetch user data and update auth context
-      // For now, we'll set a minimal user object and the token
-      // The AuthContext will handle storing this
-      const { getCurrentUser } = await import('../api/authClient');
-      try {
-        const user = await getCurrentUser(tokenData.access_token);
-        setAuth(user, tokenData.access_token);
-      } catch (userError) {
-        // If /me fails, still proceed with login using token
-        // Create a minimal user object
-        const minimalUser = {
-          id: '',
+      // Set token in auth context (user will be loaded by loadUserAndHouseholds)
+      setAuth(
+        {
+          id: 0,
+          uuid: '',
           email: identifier.includes('@') ? identifier : '',
-          username: identifier.includes('@') ? '' : identifier,
-        };
-        setAuth(minimalUser, tokenData.access_token);
+          username: identifier.includes('@') ? null : identifier,
+          full_name: null,
+          dietary_preferences: null,
+          allergies: null,
+          is_active: true,
+          is_verified: false,
+          created_at: new Date().toISOString(),
+        },
+        tokenData.access_token
+      );
+
+      // Load user and households, then redirect
+      try {
+        await loadUserAndHouseholds();
+      } catch (loadError) {
+        // If loading fails, still proceed - user can retry later
+        console.error('Failed to load user and households:', loadError);
       }
 
       // Redirect to main app page
