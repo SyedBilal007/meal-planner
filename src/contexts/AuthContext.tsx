@@ -12,6 +12,7 @@ interface AuthContextType {
   households: Household[];
   activeHouseholdId: number | null;
   setAuth: (user: User, token: string) => void;
+  updateUser: (user: User) => void;
   logout: () => void;
   setActiveHousehold: (id: number) => void;
   loadUserAndHouseholds: () => Promise<void>;
@@ -33,6 +34,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Store access token (refresh token is already stored separately in Login component)
     localStorage.setItem('mealsync_access_token', tokenData);
     localStorage.setItem('mealsync_user', JSON.stringify(userData));
+  };
+
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem('mealsync_user', JSON.stringify(updatedUser));
   };
 
   const logout = useCallback(() => {
@@ -159,6 +165,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         households,
         activeHouseholdId,
         setAuth,
+        updateUser,
         logout,
         setActiveHousehold,
         loadUserAndHouseholds,
