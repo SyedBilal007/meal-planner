@@ -7,7 +7,6 @@ import {
   mockCreateRecipe,
   mockUpdateRecipe,
   mockDeleteRecipe,
-  mockSearchRecipes,
   type Recipe as MockRecipe,
   type RecipeIngredient as MockRecipeIngredient,
 } from '../mocks/recipes';
@@ -18,7 +17,6 @@ import {
   createRecipe,
   updateRecipe,
   deleteRecipe,
-  searchRecipes,
   type Recipe,
   type RecipeIngredient,
   type RecipeCreate,
@@ -95,7 +93,7 @@ export default function RecipeLibrary() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [viewingRecipeId, setViewingRecipeId] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTerm, setSearchTerm] = useState(''); // local client-side filter
   const [actionLoading, setActionLoading] = useState<string | number | null>(null);
   const [formData, setFormData] = useState<RecipeFormData>({
     title: '',
@@ -143,21 +141,6 @@ export default function RecipeLibrary() {
     }
   }, [activeHouseholdId]);
 
-  // Search recipes when search query changes
-  useEffect(() => {
-    if (!activeHouseholdId || USE_MOCK_DATA) return;
-
-    const timeoutId = setTimeout(() => {
-      if (searchQuery.trim()) {
-        handleSearch(searchQuery);
-      } else {
-        fetchHouseholdRecipes();
-      }
-    }, 300); // Debounce search
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery, activeHouseholdId]);
-
   const fetchRecipes = async () => {
     setLoading(true);
     setError('');
@@ -190,33 +173,6 @@ export default function RecipeLibrary() {
     }
   }, [activeHouseholdId, ingredientIdToName]);
 
-  const handleSearch = async (query: string) => {
-    if (!query.trim() || !activeHouseholdId) {
-      fetchHouseholdRecipes();
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (USE_MOCK_DATA) {
-        const results = await mockSearchRecipes(query);
-        setRecipes(results);
-      } else {
-        const results = await searchRecipes(activeHouseholdId, {
-          query: query.trim(),
-          limit: 100,
-        });
-        const uiRecipes = results.map(r => mapToUIRecipe(r, ingredientIdToName));
-        setRecipes(uiRecipes);
-      }
-    } catch (err: any) {
-      console.error('Failed to search recipes:', err);
-      setError(err.message || 'Failed to search recipes');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAddIngredient = () => {
     setFormData({
       ...formData,
@@ -236,6 +192,15 @@ export default function RecipeLibrary() {
     newIngredients[index] = { ...newIngredients[index], [field]: value };
     setFormData({ ...formData, ingredients: newIngredients });
   };
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredRecipes = normalizedSearch
+    ? recipes.filter((recipe) => {
+        const name = recipe.title?.toLowerCase() ?? '';
+        const desc = recipe.description?.toLowerCase() ?? '';
+        return name.includes(normalizedSearch) || desc.includes(normalizedSearch);
+      })
+    : recipes;
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -550,8 +515,8 @@ export default function RecipeLibrary() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search recipes by title, description, cuisine, or ingredients..."
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none"
             />
@@ -938,10 +903,16 @@ export default function RecipeLibrary() {
                 Add Your First Recipe
               </motion.button>
             </div>
+          ) : filteredRecipes.length === 0 && normalizedSearch ? (
+            <div className="p-12 text-center">
+              <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">No recipes found</h3>
+              <p className="text-gray-500">No recipes match “{searchTerm}”.</p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
               <AnimatePresence>
-                {recipes.map((recipe) => (
+                {filteredRecipes.map((recipe) => (
                   <motion.div
                     key={recipe.id}
                     initial={{ opacity: 0, scale: 0.95 }}

@@ -42,7 +42,12 @@ const dayNames = {
   Sun: 'Sunday'
 };
 
-export default function MealPlanner() {
+type MealPlannerProps = {
+  showMeals?: boolean;
+  showGrocery?: boolean;
+};
+
+export default function MealPlanner({ showMeals = true, showGrocery = true }: MealPlannerProps) {
   const { currentHousehold } = useHousehold();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -613,6 +618,8 @@ export default function MealPlanner() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="container mx-auto max-w-7xl">
+        {showMeals && (
+          <>
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -1235,7 +1242,11 @@ export default function MealPlanner() {
             </div>
           </motion.div>
         </div>
+          </>
+        )}
 
+        {showGrocery && (
+          <>
         {/* Grocery List Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1576,6 +1587,8 @@ export default function MealPlanner() {
             })()}
           </div>
         </motion.div>
+          </>
+        )}
 
         {/* Toast Notification */}
         <AnimatePresence>
