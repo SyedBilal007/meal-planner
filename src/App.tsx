@@ -4,9 +4,13 @@ import { HouseholdProvider } from './contexts/HouseholdContext';
 import Login from './components/Login';
 import Register from './components/Register';
 import ProtectedRoute from './components/ProtectedRoute';
-import MealPlanner from './components/MealPlanner';
-import Pantry from './components/Pantry';
-import RecipeLibrary from './components/RecipeLibrary';
+import AppLayout from './components/AppLayout';
+import OverviewPage from './pages/OverviewPage';
+import GroceryPantryPage from './pages/GroceryPantryPage';
+import MealsPage from './pages/MealsPage';
+import RecipesPage from './pages/RecipesPage';
+import AiMealsPage from './pages/AiMealsPage';
+import ProfilePage from './pages/ProfilePage';
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth();
@@ -15,35 +19,25 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route
-        path="/"
-        element={
-          isAuthenticated ? (
+      <Route element={<ProtectedRoute />}>
+        <Route
+          path="/app"
+          element={
             <HouseholdProvider>
-              <MealPlanner />
+              <AppLayout />
             </HouseholdProvider>
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
-      <Route
-        path="/pantry"
-        element={
-          <ProtectedRoute>
-            <Pantry />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/recipes"
-        element={
-          <ProtectedRoute>
-            <RecipeLibrary />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
+          }
+        >
+          <Route index element={<OverviewPage />} />
+          <Route path="grocery-pantry" element={<GroceryPantryPage />} />
+          <Route path="meals" element={<MealsPage />} />
+          <Route path="ai-meals" element={<AiMealsPage />} />
+          <Route path="recipes" element={<RecipesPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+        </Route>
+      </Route>
+      <Route path="/" element={<Navigate to={isAuthenticated ? '/app' : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={isAuthenticated ? '/app' : '/login'} replace />} />
     </Routes>
   );
 }

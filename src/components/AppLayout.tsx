@@ -34,6 +34,9 @@ export default function AppLayout() {
               <NavLink to="/app/meals" className={navClasses}>
                 Meals
               </NavLink>
+              <NavLink to="/app/ai-meals" className={navClasses}>
+                AI Meals
+              </NavLink>
               <NavLink to="/app/recipes" className={navClasses}>
                 Recipes
               </NavLink>
